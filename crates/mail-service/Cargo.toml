@@ -1,0 +1,39 @@
+[package]
+name = "mail-service"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+clap = { workspace = true, features = ["env"] }
+common = { path = "../common" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+base64 = "0.21"
+uuid = { version = "1.6", features = ["v4"] }
+chrono = "0.4"
+async-trait = "0.1"
+tokio-rustls = "0.24"
+rustls-pemfile = "1.0"
+mail-parser = "0.8"
+ipnetwork = "0.20"
+mailin-embedded = "0.8"
+governor = "0.6"
+trust-dns-resolver = "0.23"
+dkim = "0.1.1"
+trust-dns-proto = "0.23"
+age = "0.9"
+dashmap = "5.5"
+tokio-util = { version = "0.7", features = ["time"] }
+futures-util = "0.3"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+tempfile = "3.8"
+serial_test = "2.0" 
