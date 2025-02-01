@@ -1,13 +1,16 @@
+use crate::security::encryption::encrypt_email;
 use anyhow::Result;
-use common::{AppError, Email, db::Database};
-use std::{sync::Arc, net::IpAddr, time::Duration};
-use tracing::{error, info, warn};
+use common::{db::Database, AppError, Email};
 use dashmap::DashMap;
-use governor::{RateLimiter, Quota, state::{InMemoryState, NotKeyed}};
+use governor::{
+    state::{InMemoryState, NotKeyed},
+    Quota, RateLimiter,
+};
 use ipnetwork::IpNetwork;
 use mail_parser::Message;
+use std::{net::IpAddr, sync::Arc, time::Duration};
+use tracing::{error, info, warn};
 use trust_dns_resolver::TokioAsyncResolver;
-use crate::security::encryption::encrypt_email;
 
 #[derive(Clone)]
 pub struct ServiceConfig {
@@ -37,17 +40,14 @@ pub struct MailService {
 }
 
 impl MailService {
-    pub async fn new(
-        db: Arc<dyn Database>, 
-        config: ServiceConfig,
-    ) -> Result<Self> {
+    pub async fn new(db: Arc<dyn Database>, config: ServiceConfig) -> Result<Self> {
         let rate_limiter = Arc::new(RateLimiter::direct(Quota::per_hour(
-            std::num::NonZeroU32::new(config.rate_limit_per_hour).unwrap()
+            std::num::NonZeroU32::new(config.rate_limit_per_hour).unwrap(),
         )));
 
         let dns_resolver = TokioAsyncResolver::tokio_from_system_conf()?;
 
-        Ok(Self { 
+        Ok(Self {
             db,
             domain: config.domain,
             blocked_networks: config.blocked_networks,
@@ -77,13 +77,16 @@ impl MailService {
         sender: &str,
         client_ip: IpAddr,
     ) -> Result<(), AppError> {
-        info!("Processing incoming email for recipient: {} from {}", recipient, sender);
-        
+        info!(
+            "Processing incoming email for recipient: {} from {}",
+            recipient, sender
+        );
+
         // Check greylisting if enabled
         if self.enable_greylisting {
             let key = (client_ip, sender.to_string(), recipient.to_string());
             let now = chrono::Utc::now().timestamp();
-            
+
             if let Some(first_seen) = self.greylist.get(&key) {
                 if now - *first_seen < self.greylist_delay.as_secs() as i64 {
                     return Err(AppError::Mail("Greylisted, try again later".to_string()));
@@ -92,6 +95,9 @@ impl MailService {
                 self.greylist.insert(key, now);
                 return Err(AppError::Mail("Greylisted, try again later".to_string()));
             }
+            // the removal is done here to avoid deadlock with if let
+            // Remove from greylist after successful delay period
+            self.greylist.remove(&key);
         }
 
         // Parse email for validation and extraction
@@ -113,8 +119,10 @@ impl MailService {
                 return Err(AppError::Mail("DKIM validation failed".to_string()));
             }
         }
-        
-        let mailbox = self.db.get_mailbox_by_address(recipient)
+
+        let mailbox = self
+            .db
+            .get_mailbox_by_address(recipient)
             .await?
             .ok_or_else(|| AppError::Mail(format!("Mailbox not found: {}", recipient)))?;
 
@@ -155,7 +163,7 @@ impl MailService {
 
     pub async fn cleanup_expired(&self) -> Result<(), AppError> {
         info!("Running cleanup for expired mailboxes and emails");
-        
+
         self.db.cleanup_expired_emails().await?;
         self.db.cleanup_expired_mailboxes().await?;
 
@@ -175,7 +183,7 @@ impl MailService {
                 if let Err(e) = service.cleanup_expired().await {
                     error!("Cleanup task error: {}", e);
                 }
-                
+
                 // Cleanup old greylist entries
                 let now = chrono::Utc::now().timestamp();
                 service.greylist.retain(|_, first_seen| {
@@ -184,4 +192,4 @@ impl MailService {
             }
         });
     }
-} 
+}

@@ -1,7 +1,7 @@
 use std::{sync::Arc, net::IpAddr, time::Duration};
 use anyhow::Result;
 use common::{db::Database, db::SqliteDatabase, Mailbox, User, AuthType, security::decrypt_email};
-use mail_service::MailService;
+use mail_service::{MailService, ServiceConfig};
 use uuid::Uuid;
 
 const TEST_PUBLIC_KEY: &str = "age1creym8a9ncefdvplrqrfy7wf8k3fw2l7w5z7nwp03jgfyhc56gcqgq27cg";
@@ -25,16 +25,20 @@ async fn setup_test_service(enable_greylisting: bool) -> Result<(Arc<MailService
         "10.0.0.0/8".parse().unwrap(),
     ];
     
+    let config = ServiceConfig {
+        domain: "test.com".to_string(),
+        blocked_networks,
+        max_email_size: 1024 * 1024, // 1MB max email size
+        rate_limit_per_hour: 100, // rate limit
+        enable_greylisting,
+        greylist_delay: Duration::from_secs(5), // increased to 5 seconds for more reliable testing
+        enable_spf: false, // disable SPF for testing
+        enable_dkim: false, // disable DKIM for testing
+    };
+
     let service = MailService::new(
         db.clone(),
-        "test.com".to_string(),
-        blocked_networks,
-        1024 * 1024, // 1MB max email size
-        100, // rate limit
-        enable_greylisting, // configurable greylisting
-        Duration::from_secs(1), // 1 second greylist delay for testing
-        false, // disable SPF for testing
-        false, // disable DKIM for testing
+        config,
     ).await?;
     
     Ok((Arc::new(service), db))
@@ -152,8 +156,8 @@ async fn test_greylisting() -> Result<()> {
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("Greylisted"));
     
-    // Wait for greylist delay
-    tokio::time::sleep(Duration::from_secs(3)).await;
+    // Wait for greylist delay (wait 7 seconds to be safe, as delay is 5 seconds)
+    tokio::time::sleep(Duration::from_secs(7)).await;
     
     // Second attempt should succeed
     let result = service.process_incoming_email(
@@ -175,14 +179,14 @@ async fn test_cleanup() -> Result<()> {
     // Create test user first
     let test_user = create_test_user(&db).await?;
     
-    // Create test mailbox that expires soon
+    // Create test mailbox that expires immediately
     let test_mailbox = Mailbox {
         id: Uuid::new_v4().to_string(),
         address: "test@test.com".to_string(),
         public_key: TEST_PUBLIC_KEY.to_string(),
         owner_id: test_user.id,
         created_at: chrono::Utc::now().timestamp(),
-        expires_at: Some(chrono::Utc::now().timestamp() + 1),
+        expires_at: Some(chrono::Utc::now().timestamp()), // Set to expire immediately
     };
     
     // Create mailbox using database
@@ -198,8 +202,8 @@ async fn test_cleanup() -> Result<()> {
         "192.168.1.1".parse()?,
     ).await?;
     
-    // Wait for expiration
-    tokio::time::sleep(Duration::from_secs(3)).await;
+    // Wait a bit to ensure expiration
+    tokio::time::sleep(Duration::from_secs(1)).await;
     
     // Run cleanup
     service.cleanup_expired().await?;

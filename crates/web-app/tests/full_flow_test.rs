@@ -11,9 +11,9 @@ use common::{
     Email,
     security::decrypt_email,
 };
-use mail_service::MailService;
+use mail_service::{MailService, ServiceConfig};
 use serde_json::json;
-use std::{sync::Arc, net::IpAddr};
+use std::{sync::Arc, net::IpAddr, time::Duration};
 use tower::ServiceExt;
 use web_app::{create_app, ApiResponse};
 use http_body_util::BodyExt;
@@ -107,16 +107,20 @@ async fn test_complete_flow() -> anyhow::Result<()> {
     assert_eq!(mailbox.public_key, TEST_PUBLIC_KEY);
     
     // Set up mail service with the same database
+    let config = ServiceConfig {
+        domain: "test.example.com".to_string(),
+        blocked_networks: vec![],
+        max_email_size: 1024 * 1024,
+        rate_limit_per_hour: 100,
+        enable_greylisting: false,
+        greylist_delay: Duration::from_secs(1),
+        enable_spf: false,
+        enable_dkim: false,
+    };
+
     let service = MailService::new(
         db.clone(),
-        "test.example.com".to_string(),
-        vec![],
-        1024 * 1024,
-        100,
-        false,
-        std::time::Duration::from_secs(1),
-        false,
-        false,
+        config,
     ).await?;
     
     // Send a test email
