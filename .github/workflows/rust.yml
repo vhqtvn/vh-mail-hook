@@ -51,7 +51,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: frontend-build
-          path: crates/web-app/frontend/build
+          path: crates/web-app/static
           
   test:
     name: Run Tests
@@ -65,7 +65,7 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         name: frontend-build
-        path: crates/web-app/frontend/build
+        path: crates/web-app/static
     
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@stable
@@ -95,7 +95,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: frontend-build
-          path: crates/web-app/frontend/build
+          path: crates/web-app/static
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
