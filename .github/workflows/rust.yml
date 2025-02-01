@@ -32,7 +32,7 @@ jobs:
           ${{ runner.os }}-cargo-
     
     - name: Run cargo test
-      run: cargo test --verbose --workspace --timeout 10000
+      run: cargo test --verbose --workspace
 
   clippy:
     name: Clippy
