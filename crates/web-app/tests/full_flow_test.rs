@@ -1,6 +1,6 @@
 use axum::{
     response::Response,
-    http::{Request, StatusCode, header},
+    http::{Request, StatusCode},
     body::Body,
 };
 use common::{
@@ -39,6 +39,10 @@ where
     let body_str = String::from_utf8_lossy(&bytes);
     info!("Response status: {}, body: {}", status, body_str);
     
+    if !status.is_success() {
+        panic!("Request failed with status {}: {}", status, body_str);
+    }
+    
     match serde_json::from_slice::<T>(&bytes) {
         Ok(value) => value,
         Err(e) => {
@@ -66,10 +70,14 @@ struct AuthResponse {
 async fn test_complete_flow() -> anyhow::Result<()> {
     setup();
     
+    info!("Setting up test environment...");
+    
     // Set up shared database
     let db = SqliteDatabase::new_in_memory().await?;
     db.init().await?;
     let db = Arc::new(db);
+    
+    info!("Database initialized");
     
     // Set JWT secret for auth
     std::env::set_var("JWT_SECRET", "test-secret-key");
@@ -82,6 +90,8 @@ async fn test_complete_flow() -> anyhow::Result<()> {
     let migrations_path = workspace_dir.join("common").join("migrations");
     env::set_var("SQLX_MIGRATIONS_DIR", migrations_path);
     
+    info!("Creating web app...");
+    
     // Set up web app
     let app = create_app(
         db.clone(),
@@ -89,17 +99,20 @@ async fn test_complete_flow() -> anyhow::Result<()> {
         "http://localhost:3000".to_string()
     );
     
+    info!("Registering test user...");
+    
     // Register user with password
     let register_response = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/auth/register")
+                .uri("/api/auth/register")
                 .header("Content-Type", "application/json")
                 .body(Body::from(json!({
                     "username": TEST_USERNAME,
-                    "password": TEST_PASSWORD
+                    "password": TEST_PASSWORD,
+                    "auth_type": AuthType::Password
                 }).to_string()))
                 .unwrap(),
         )
@@ -111,6 +124,8 @@ async fn test_complete_flow() -> anyhow::Result<()> {
     let user = auth_data.user;
     let token = auth_data.token;
     
+    info!("User registered successfully with id: {}", user.id);
+
     // Create a mailbox with test public key
     let create_mailbox_response = app
         .clone()

@@ -17,6 +17,7 @@ use crate::auth::{create_token, store_credentials};
 #[derive(Debug, Deserialize)]
 pub struct OAuthCallback {
     code: String,
+    #[allow(dead_code)]
     state: String,
 }
 

@@ -1,5 +1,6 @@
 use axum::{
-    extract::{Json, Path, State}, http::{HeaderValue, StatusCode}, middleware, routing::{delete, get, patch, post}, Router
+    extract::{Json, Path, State}, http::{HeaderValue, StatusCode, header}, middleware, routing::{delete, get, patch, post}, Router,
+    response::{IntoResponse, Response},
 };
 use common::{Mailbox, Email, db::Database, AppError};
 use reqwest::Url;
@@ -9,9 +10,14 @@ use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tracing::{info, error};
 use clap::Parser;
 use tokio::net::TcpListener;
+use rust_embed::RustEmbed;
 
 mod auth;
 use auth::Claims;
+
+#[derive(RustEmbed)]
+#[folder = "static"]
+struct StaticAssets;
 
 #[derive(Parser)]
 pub struct Config {
@@ -74,12 +80,6 @@ pub struct UpdateMailboxRequest {
     expires_in_days: Option<i64>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct CreateUserRequest {
-    username: String,
-    auth_type: common::AuthType,
-}
-
 pub async fn run(config: Config) -> anyhow::Result<()> {
     let db = common::db::SqliteDatabase::new(&format!("sqlite:{}", config.database_path)).await?;
     let db = Arc::new(db);
@@ -128,22 +128,50 @@ pub fn create_app<D: Database + 'static>(
 
     Router::new()
         .merge(auth::create_routes::<D>())
-        .route("/api/users", post(create_user::<D>))
-        .nest("/", mailbox_routes.layer(middleware::from_fn(auth::auth::<D>)))
+        .nest("/", mailbox_routes.layer(middleware::from_fn(auth::auth)))
+        .fallback(static_handler)
         .layer(cors)
         .with_state(state)
 }
 
-async fn create_user<D: Database>(
-    State(state): State<Arc<AppState<D>>>,
-    Json(req): Json<CreateUserRequest>,
-) -> Result<Json<ApiResponse<common::User>>, StatusCode> {
-    match state.db.create_user(&req.username, req.auth_type).await {
-        Ok(user) => Ok(Json(ApiResponse::success(user))),
-        Err(e) => {
-            error!("Failed to create user: {}", e);
-            Ok(Json(ApiResponse::error("Failed to create user")))
-        }
+async fn static_handler(uri: axum::http::Uri, method: axum::http::Method) -> impl IntoResponse {
+    // Only serve static files for GET requests
+    if method != axum::http::Method::GET {
+        return Response::builder()
+            .status(StatusCode::METHOD_NOT_ALLOWED)
+            .body(axum::body::Body::empty())
+            .unwrap();
+    }
+
+    let path = uri.path().trim_start_matches('/');
+    
+    // Don't try to serve static files for API routes
+    if path.starts_with("api/") {
+        return Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(axum::body::Body::empty())
+            .unwrap();
+    }
+
+    // First try to serve the exact static file
+    if let Some(content) = StaticAssets::get(path) {
+        let mime = mime_guess::from_path(path).first_or_octet_stream();
+        return Response::builder()
+            .header(header::CONTENT_TYPE, mime.as_ref())
+            .body(axum::body::Body::from(content.data))
+            .unwrap();
+    }
+
+    // If no static file is found, serve index.html for client-side routing
+    match StaticAssets::get("index.html") {
+        Some(content) => Response::builder()
+            .header(header::CONTENT_TYPE, "text/html")
+            .body(axum::body::Body::from(content.data))
+            .unwrap(),
+        None => Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(axum::body::Body::from("404 Not Found"))
+            .unwrap(),
     }
 }
 

@@ -1,17 +1,17 @@
+use crate::{ApiResponse, AppState};
 use axum::{
+    body::Body,
     extract::{Json, State},
+    http::{header, Request, StatusCode},
+    middleware::{self, Next},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Router,
-    response::{Response, IntoResponse},
-    http::{header, Request, StatusCode},
-    body::Body,
-    middleware::Next,
 };
-use common::{AppError, AuthType, User, db::Database};
+use common::{db::Database, AppError, AuthType, User};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::{AppState, ApiResponse};
 
 mod oauth;
 mod password;
@@ -52,13 +52,28 @@ pub struct AuthResponse {
 // Create auth routes
 pub fn create_routes<D: Database + 'static>() -> Router<Arc<AppState<D>>> {
     Router::new()
-        .route("/auth/register", post(register_handler::<D>))
-        .route("/auth/login", post(login_handler::<D>))
-        .route("/auth/github/login", get(github_login_handler))
-        .route("/auth/github/callback", get(github_callback_handler::<D>))
-        .route("/auth/google/login", get(google_login_handler))
-        .route("/auth/google/callback", get(google_callback_handler::<D>))
-        .route("/auth/telegram/verify", post(telegram_verify_handler::<D>))
+        .route("/api/auth/register", post(register_handler::<D>))
+        .route("/api/auth/login", post(login_handler::<D>))
+        .route("/api/auth/github/login", get(github_login_handler))
+        .route(
+            "/api/auth/github/callback",
+            get(github_callback_handler::<D>),
+        )
+        .route("/api/auth/google/login", get(google_login_handler))
+        .route(
+            "/api/auth/google/callback",
+            get(google_callback_handler::<D>),
+        )
+        .route(
+            "/api/auth/telegram/verify",
+            post(telegram_verify_handler::<D>),
+        )
+        .nest(
+            "/api/auth/me",
+            Router::new()
+                .route("/", get(me_handler::<D>))
+                .layer(middleware::from_fn(auth)),
+        )
 }
 
 // Register handler
@@ -67,15 +82,18 @@ async fn register_handler<D: Database>(
     Json(req): Json<RegisterRequest>,
 ) -> Result<Json<ApiResponse<AuthResponse>>, AppError> {
     // Create user with password auth type
-    let user = state.db.create_user(&req.username, AuthType::Password).await?;
-    
+    let user = state
+        .db
+        .create_user(&req.username, AuthType::Password)
+        .await?;
+
     // Hash password and store credentials
     let password_hash = password::hash_password(&req.password)?;
     store_credentials(&state.db, &user.id, Some(&password_hash), None, None, None).await?;
-    
+
     // Generate JWT token
     let token = create_token(&user.id)?;
-    
+
     Ok(Json(ApiResponse::success(AuthResponse { token, user })))
 }
 
@@ -86,25 +104,41 @@ async fn login_handler<D: Database>(
 ) -> Result<Json<ApiResponse<AuthResponse>>, AppError> {
     // Get user by username
     let user = get_user_by_username(&state.db, &req.username).await?;
-    
+
     // Verify password
     let credentials = get_credentials(&state.db, &user.id).await?;
-    if !password::verify_password(&req.password, credentials.password_hash.as_deref().unwrap_or_default())? {
-        return Err(AppError::Auth("Invalid password".to_string()));
+    if !password::verify_password(
+        &req.password,
+        credentials.password_hash.as_deref().unwrap_or_default(),
+    )? {
+        return Ok(Json(ApiResponse::error("Invalid password".to_string())));
     }
-    
+
     // Generate JWT token
     let token = create_token(&user.id)?;
-    
+
     Ok(Json(ApiResponse::success(AuthResponse { token, user })))
 }
 
+// Me handler to check authentication status
+async fn me_handler<D: Database>(
+    State(state): State<Arc<AppState<D>>>,
+    claims: axum::extract::Extension<Claims>,
+) -> Result<Json<ApiResponse<User>>, AppError> {
+    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = ?")
+        .bind(&claims.sub)
+        .fetch_optional(state.db.pool())
+        .await
+        .map_err(|e| AppError::Database(e.to_string()))?
+        .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+
+    Ok(Json(ApiResponse::success(user)))
+}
+
 // Auth middleware
-pub async fn auth<D: Database>(
-    req: Request<Body>,
-    next: Next,
-) -> Response {
-    let auth_header = req.headers()
+pub async fn auth(req: Request<Body>, next: Next) -> Response {
+    let auth_header = req
+        .headers()
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok());
 
@@ -116,7 +150,11 @@ pub async fn auth<D: Database>(
     };
 
     if !auth_header.starts_with("Bearer ") {
-        return (StatusCode::UNAUTHORIZED, "Invalid authorization header format").into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            "Invalid authorization header format",
+        )
+            .into_response();
     }
 
     let token = auth_header.trim_start_matches("Bearer ");
@@ -134,18 +172,14 @@ pub async fn auth<D: Database>(
     ) {
         Ok(token_data) => token_data.claims,
         Err(e) => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                format!("Invalid token: {}", e),
-            )
-                .into_response();
+            return (StatusCode::UNAUTHORIZED, format!("Invalid token: {}", e)).into_response();
         }
     };
 
     // Add user_id to request extensions
     let mut req = req;
     req.extensions_mut().insert(claims);
-    
+
     next.run(req).await
 }
 
@@ -160,7 +194,7 @@ pub(crate) async fn store_credentials<D: Database>(
     telegram_id: Option<&str>,
 ) -> Result<(), AppError> {
     let now = chrono::Utc::now().timestamp();
-    
+
     sqlx::query(
         "INSERT INTO user_credentials (user_id, password_hash, oauth_provider, oauth_id, telegram_id, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -175,7 +209,7 @@ pub(crate) async fn store_credentials<D: Database>(
     .execute(db.pool())
     .await
     .map_err(|e| AppError::Database(e.to_string()))?;
-    
+
     Ok(())
 }
 
@@ -183,14 +217,12 @@ pub(crate) async fn get_credentials<D: Database>(
     db: &D,
     user_id: &str,
 ) -> Result<UserCredentials, AppError> {
-    sqlx::query_as::<_, UserCredentials>(
-        "SELECT * FROM user_credentials WHERE user_id = ?",
-    )
-    .bind(user_id)
-    .fetch_optional(db.pool())
-    .await
-    .map_err(|e| AppError::Database(e.to_string()))?
-    .ok_or_else(|| AppError::NotFound("User credentials not found".to_string()))
+    sqlx::query_as::<_, UserCredentials>("SELECT * FROM user_credentials WHERE user_id = ?")
+        .bind(user_id)
+        .fetch_optional(db.pool())
+        .await
+        .map_err(|e| AppError::Database(e.to_string()))?
+        .ok_or_else(|| AppError::NotFound("User credentials not found".to_string()))
 }
 
 pub(crate) async fn get_user_by_username<D: Database>(
@@ -206,6 +238,7 @@ pub(crate) async fn get_user_by_username<D: Database>(
 }
 
 #[derive(Debug, sqlx::FromRow)]
+#[allow(dead_code)]
 pub(crate) struct UserCredentials {
     pub user_id: String,
     pub password_hash: Option<String>,
@@ -223,7 +256,7 @@ fn create_token(user_id: &str) -> Result<String, AppError> {
         exp: now + 24 * 3600, // 24 hours from now
         iat: now,
     };
-    
+
     encode(
         &Header::default(),
         &claims,
@@ -234,4 +267,4 @@ fn create_token(user_id: &str) -> Result<String, AppError> {
 
 fn get_jwt_secret() -> String {
     std::env::var("JWT_SECRET").unwrap_or_else(|_| "your-256-bit-secret".to_string())
-} 
+}

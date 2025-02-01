@@ -1,10 +1,10 @@
 use axum::{
     routing::Router,
     response::Response,
-    http::{Request, StatusCode, header},
+    http::{Request, StatusCode},
     body::Body,
 };
-use common::{db::Database, db::SqliteDatabase, Mailbox, User, Email, AuthType};
+use common::{db::Database, db::SqliteDatabase, Mailbox, User, Email};
 use serde_json::json;
 use std::{sync::Arc, env, path::PathBuf};
 use tower::Service;
@@ -104,7 +104,7 @@ where
         .call(
             Request::builder()
                 .method("POST")
-                .uri("/auth/register")
+                .uri("/api/auth/register")
                 .header("Content-Type", "application/json")
                 .body(Body::from(json!({
                     "username": TEST_USERNAME,
@@ -411,4 +411,94 @@ async fn test_get_mailbox_emails() {
     assert!(emails_response.success);
     let emails = emails_response.data.unwrap();
     assert!(emails.is_empty());
+}
+
+#[tokio::test]
+async fn test_login() {
+    setup();
+    let app = setup_test_app().await;
+    let mut app_service = app.into_service();
+
+    // First register a user
+    let register_response = app_service
+        .call(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/register")
+                .header("Content-Type", "application/json")
+                .body(Body::from(json!({
+                    "username": TEST_USERNAME,
+                    "password": TEST_PASSWORD
+                }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(register_response.status(), StatusCode::OK);
+
+    // Then try to login
+    let login_response = app_service
+        .call(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header("Content-Type", "application/json")
+                .body(Body::from(json!({
+                    "username": TEST_USERNAME,
+                    "password": TEST_PASSWORD
+                }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(login_response.status(), StatusCode::OK);
+    let auth_response: ApiResponse<AuthResponse> = read_body(login_response).await;
+    assert!(auth_response.success);
+    let auth_data = auth_response.data.unwrap();
+    assert_eq!(auth_data.user.username, TEST_USERNAME);
+}
+
+#[tokio::test]
+async fn test_auth_check() {
+    setup();
+    let app = setup_test_app().await;
+    let mut app_service = app.into_service();
+
+    // Create a test user with auth
+    let (_, token) = create_test_user_with_auth(&mut app_service).await;
+
+    // Check authentication with the token
+    let auth_check_response = app_service
+        .call(
+            Request::builder()
+                .method("GET")
+                .uri("/api/auth/me")
+                .header("Authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(auth_check_response.status(), StatusCode::OK);
+    let auth_check: ApiResponse<User> = read_body(auth_check_response).await;
+    assert!(auth_check.success);
+    let user = auth_check.data.unwrap();
+    assert_eq!(user.username, TEST_USERNAME);
+
+    // Check authentication without token should fail
+    let auth_check_no_token = app_service
+        .call(
+            Request::builder()
+                .method("GET")
+                .uri("/api/auth/me")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(auth_check_no_token.status(), StatusCode::UNAUTHORIZED);
 } 

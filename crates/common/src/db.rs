@@ -122,11 +122,7 @@ impl Database for SqliteDatabase {
         sqlx::query("INSERT INTO users (id, username, auth_type, created_at) VALUES (?, ?, ?, ?)")
             .bind(&user.id)
             .bind(&user.username)
-            .bind(match user.auth_type {
-                AuthType::Password => "Password",
-                AuthType::GitHub => "GitHub",
-                AuthType::Telegram => "Telegram",
-            })
+            .bind(&user.auth_type)
             .bind(user.created_at)
             .execute(&self.pool)
             .await
@@ -146,9 +142,9 @@ impl Database for SqliteDatabase {
             Some(row) => {
                 let auth_type_str: String = row.get("auth_type");
                 let auth_type: AuthType = match auth_type_str.as_str() {
-                    "Password" => AuthType::Password,
-                    "GitHub" => AuthType::GitHub,
-                    "Telegram" => AuthType::Telegram,
+                    "password" => AuthType::Password,
+                    "github" => AuthType::GitHub,
+                    "telegram" => AuthType::Telegram,
                     _ => return Err(AppError::Database("Invalid auth_type".to_string())),
                 };
 
