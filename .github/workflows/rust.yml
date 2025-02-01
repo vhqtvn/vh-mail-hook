@@ -17,10 +17,41 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
+    - name: Install Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version-file: 'crates/web-app/frontend/.nvmrc'
+        
+    - name: Install pnpm
+      uses: pnpm/action-setup@v2
+      with:
+        version: 8
+        
+    - name: Get pnpm store directory
+      shell: bash
+      run: |
+        echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+    - name: Cache pnpm dependencies
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.STORE_PATH }}
+        key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+        restore-keys: |
+          ${{ runner.os }}-pnpm-store-
+          
+    - name: Install frontend dependencies
+      working-directory: crates/web-app/frontend
+      run: pnpm install --frozen-lockfile
+      
+    - name: Build frontend
+      working-directory: crates/web-app/frontend
+      run: pnpm build
+    
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@stable
     
-    - name: Cache dependencies
+    - name: Cache Rust dependencies
       uses: actions/cache@v3
       with:
         path: |
