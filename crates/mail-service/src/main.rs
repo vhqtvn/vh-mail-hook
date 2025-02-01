@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use tracing::info;
 use mail_service::{Config, run};
 use clap::Parser;

@@ -20,6 +20,7 @@ pub struct MailService {
     greylist_delay: Duration,
     enable_spf: bool,
     enable_dkim: bool,
+    #[allow(unused)]
     dns_resolver: TokioAsyncResolver,
 }
 

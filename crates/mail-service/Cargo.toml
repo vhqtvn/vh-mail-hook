@@ -32,6 +32,7 @@ age = "0.9"
 dashmap = "5.5"
 tokio-util = { version = "0.7", features = ["time"] }
 futures-util = "0.3"
+notify = { version = "6.1", default-features = false, features = ["macos_kqueue"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }

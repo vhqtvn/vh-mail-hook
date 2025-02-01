@@ -58,4 +58,8 @@ pub struct Config {
     /// Cleanup interval in minutes
     #[arg(long, env = "CLEANUP_INTERVAL", default_value = "60")]
     pub cleanup_interval: u64,
+
+    /// TLS file polling interval in seconds (for watching TLS certificate changes)
+    #[arg(long, env = "TLS_POLL_INTERVAL", default_value = "300")]
+    pub tls_poll_interval: u64,
 } 

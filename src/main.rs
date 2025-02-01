@@ -32,6 +32,10 @@ pub struct Config {
     #[arg(long, env = "TLS_CHAIN_PATH")]
     pub tls_chain_path: Option<std::path::PathBuf>,
 
+    /// TLS file polling interval in seconds (for watching TLS certificate changes)
+    #[arg(long, env = "TLS_POLL_INTERVAL", default_value = "300")]
+    pub tls_poll_interval: u64,
+
     /// Maximum email size in bytes (default: 10MB)
     #[arg(long, env = "MAX_EMAIL_SIZE", default_value = "10485760")]
     pub max_email_size: usize,
@@ -90,6 +94,7 @@ async fn main() {
         tls_cert_path: config.tls_cert_path,
         tls_key_path: config.tls_key_path,
         tls_chain_path: config.tls_chain_path,
+        tls_poll_interval: config.tls_poll_interval,
         blocked_networks: config.blocked_networks,
         max_email_size: config.max_email_size,
         rate_limit_per_hour: config.rate_limit_per_hour,
