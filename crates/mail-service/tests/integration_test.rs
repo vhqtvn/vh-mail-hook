@@ -1,8 +1,7 @@
 use std::{sync::Arc, net::IpAddr, time::Duration};
 use anyhow::Result;
-use common::{db::Database, db::SqliteDatabase, Mailbox, Email, User, AuthType, AppError, security::{encrypt_email, decrypt_email}};
-use mail_service::{Config, MailService};
-use ipnetwork::IpNetwork;
+use common::{db::Database, db::SqliteDatabase, Mailbox, User, AuthType, security::decrypt_email};
+use mail_service::MailService;
 use uuid::Uuid;
 
 const TEST_PUBLIC_KEY: &str = "age1creym8a9ncefdvplrqrfy7wf8k3fw2l7w5z7nwp03jgfyhc56gcqgq27cg";
@@ -10,7 +9,7 @@ const TEST_SECRET_KEY: &str = "AGE-SECRET-KEY-10Q6FGH2JQD9VS0ZM50KV7XVC8SAC50MM5
 
 // Test utilities
 async fn setup_test_db() -> Result<Arc<dyn Database>> {
-    let db = SqliteDatabase::new("sqlite::memory:").await?;
+    let db = SqliteDatabase::new_in_memory().await?;
     db.init().await?;  // Initialize the database schema
     Ok(Arc::new(db))
 }
@@ -154,7 +153,7 @@ async fn test_greylisting() -> Result<()> {
     assert!(result.unwrap_err().to_string().contains("Greylisted"));
     
     // Wait for greylist delay
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    tokio::time::sleep(Duration::from_secs(3)).await;
     
     // Second attempt should succeed
     let result = service.process_incoming_email(
@@ -200,7 +199,7 @@ async fn test_cleanup() -> Result<()> {
     ).await?;
     
     // Wait for expiration
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    tokio::time::sleep(Duration::from_secs(3)).await;
     
     // Run cleanup
     service.cleanup_expired().await?;
@@ -208,6 +207,32 @@ async fn test_cleanup() -> Result<()> {
     // Verify cleanup
     let emails = service.get_mailbox_emails(&mailbox_id).await?;
     assert!(emails.is_empty());
+    
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_nonexistent_mailbox() -> Result<()> {
+    let (service, _) = setup_test_service(false).await?;
+    
+    // Try to send email to a non-existent mailbox
+    let email_content = "From: sender@example.com\r\n\
+                        To: nonexistent@test.com\r\n\
+                        Subject: Test Email\r\n\
+                        \r\n\
+                        This is a test email.";
+    
+    let result = service.process_incoming_email(
+        email_content.as_bytes(),
+        "nonexistent@test.com",
+        "sender@example.com",
+        "192.168.1.1".parse()?,
+    ).await;
+    
+    // Should return an error indicating mailbox not found
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(err.to_string().contains("Mailbox not found"));
     
     Ok(())
 } 

@@ -11,6 +11,7 @@ use tower_http::cors::CorsLayer;
 use tracing::{info, error};
 use clap::Parser;
 use tokio::net::TcpListener;
+use uuid;
 
 #[derive(Parser)]
 pub struct Config {
@@ -61,6 +62,7 @@ impl<T> ApiResponse<T> {
 pub struct CreateMailboxRequest {
     expires_in_days: Option<i64>,
     owner_id: String,
+    public_key: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -137,7 +139,14 @@ async fn create_mailbox(
         chrono::Utc::now() + chrono::Duration::days(days)
     }).map(|dt| dt.timestamp());
 
-    let mailbox = Mailbox::new(&req.owner_id, &state.email_domain, expires_at);
+    let mailbox = Mailbox {
+        id: uuid::Uuid::new_v4().to_string(),
+        address: format!("{}@{}", uuid::Uuid::new_v4(), state.email_domain),
+        public_key: req.public_key,
+        owner_id: req.owner_id,
+        created_at: chrono::Utc::now().timestamp(),
+        expires_at,
+    };
     
     match state.db.create_mailbox(&mailbox).await {
         Ok(_) => Ok(Json(ApiResponse::success(mailbox))),

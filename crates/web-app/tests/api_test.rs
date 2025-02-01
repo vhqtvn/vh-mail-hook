@@ -12,6 +12,10 @@ use web_app::{create_app, ApiResponse};
 use http_body_util::BodyExt;
 use tracing::{info, error};
 
+const TEST_PUBLIC_KEY: &str = "age1creym8a9ncefdvplrqrfy7wf8k3fw2l7w5z7nwp03jgfyhc56gcqgq27cg";
+#[allow(dead_code)]
+const TEST_SECRET_KEY: &str = "AGE-SECRET-KEY-10Q6FGH2JQD9VS0ZM50KV7XVC8SAC50MM5DDH9DKWQR3RCSJKYM6QAX66U8";
+
 async fn setup_test_app() -> Router {
     info!("Setting up test database");
     
@@ -116,7 +120,8 @@ async fn test_create_mailbox() {
 
     let request_body = json!({
         "owner_id": owner_id,
-        "expires_in_days": 7
+        "expires_in_days": 7,
+        "public_key": TEST_PUBLIC_KEY
     });
 
     info!("Sending request with body: {}", request_body);
@@ -161,7 +166,8 @@ async fn test_get_mailbox() {
                 .body(Body::from(
                     json!({
                         "owner_id": owner_id,
-                        "expires_in_days": 7
+                        "expires_in_days": 7,
+                        "public_key": TEST_PUBLIC_KEY
                     })
                     .to_string(),
                 ))
@@ -213,7 +219,8 @@ async fn test_update_mailbox() {
                 .body(Body::from(
                     json!({
                         "owner_id": owner_id,
-                        "expires_in_days": 7
+                        "expires_in_days": 7,
+                        "public_key": TEST_PUBLIC_KEY
                     })
                     .to_string(),
                 ))
@@ -271,7 +278,8 @@ async fn test_delete_mailbox() {
                 .body(Body::from(
                     json!({
                         "owner_id": owner_id,
-                        "expires_in_days": 7
+                        "expires_in_days": 7,
+                        "public_key": TEST_PUBLIC_KEY
                     })
                     .to_string(),
                 ))
@@ -335,7 +343,8 @@ async fn test_get_mailbox_emails() {
                 .body(Body::from(
                     json!({
                         "owner_id": owner_id,
-                        "expires_in_days": 7
+                        "expires_in_days": 7,
+                        "public_key": TEST_PUBLIC_KEY
                     })
                     .to_string(),
                 ))
