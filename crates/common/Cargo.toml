@@ -17,4 +17,5 @@ sqlx = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 age = { version = "0.9", features = ["armor"] }
-base64 = "0.21" 
+base64 = "0.21"
+axum = { version = "0.7", features = ["macros"] } 

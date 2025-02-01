@@ -4,6 +4,10 @@ use tracing::{error, info};
 
 #[derive(Parser)]
 pub struct Config {
+    /// Web app URL (e.g. 'https://example.com')
+    #[arg(long, env = "WEB_APP_URL", default_value = "https://example.com")]
+    pub web_app_url: String,
+
     /// SQLite database path (e.g. 'data.db' or ':memory:' for in-memory database)
     #[arg(long, env = "DATABASE_PATH", default_value = "data.db")]
     pub database_path: String,
@@ -84,6 +88,7 @@ async fn main() {
         database_path: config.database_path.clone(),
         bind_addr: config.web_bind_addr.clone(),
         email_domain: config.email_domain.clone(),
+        web_app_url: config.web_app_url.clone(),
     };
 
     // Create mail service config

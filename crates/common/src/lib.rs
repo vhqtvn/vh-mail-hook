@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
 use thiserror::Error;
 use uuid::Uuid;
+use axum::response::{IntoResponse, Response};
+use axum::http::StatusCode;
 
 pub mod db;
 pub mod security;
@@ -17,6 +20,20 @@ pub enum AppError {
     Internal(String),
     #[error("Not found: {0}")]
     NotFound(String),
+}
+
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        let (status, message) = match self {
+            AppError::Auth(msg) => (StatusCode::UNAUTHORIZED, msg),
+            AppError::Database(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            AppError::Mail(msg) => (StatusCode::BAD_REQUEST, msg),
+            AppError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
+        };
+        
+        (status, message).into_response()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -55,7 +72,7 @@ pub struct Email {
     pub expires_at: Option<i64>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, FromRow)]
 pub struct User {
     pub id: String,
     pub username: String,
@@ -64,6 +81,8 @@ pub struct User {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(sqlx::Type)]
+#[sqlx(type_name = "TEXT", rename_all = "lowercase")]
 pub enum AuthType {
     Password,
     GitHub,

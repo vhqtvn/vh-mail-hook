@@ -6,6 +6,8 @@ use tracing::info;
 
 #[async_trait]
 pub trait Database: Send + Sync {
+    fn pool(&self) -> &SqlitePool;
+
     async fn init(&self) -> Result<(), AppError>;
 
     // User operations
@@ -87,6 +89,10 @@ impl SqliteDatabase {
 
 #[async_trait]
 impl Database for SqliteDatabase {
+    fn pool(&self) -> &SqlitePool {
+        &self.pool
+    }
+
     async fn init(&self) -> Result<(), AppError> {
         // Enable foreign key constraints
         sqlx::query("PRAGMA foreign_keys = ON;")
@@ -440,7 +446,11 @@ impl Database for SqliteDatabase {
 }
 
 #[async_trait]
-impl Database for Arc<SqliteDatabase> {
+impl<D: Database + ?Sized> Database for Arc<D> {
+    fn pool(&self) -> &SqlitePool {
+        (**self).pool()
+    }
+
     async fn init(&self) -> Result<(), AppError> {
         (**self).init().await
     }

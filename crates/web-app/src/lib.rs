@@ -1,16 +1,17 @@
 use axum::{
-    routing::{get, post, delete, patch},
-    Router,
-    extract::{State, Json, Path},
-    http::StatusCode,
+    extract::{Json, Path, State}, http::{HeaderValue, StatusCode}, middleware, routing::{delete, get, patch, post}, Router
 };
 use common::{Mailbox, Email, db::Database, AppError};
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use std::{sync::Arc, net::SocketAddr};
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tracing::{info, error};
 use clap::Parser;
 use tokio::net::TcpListener;
+
+mod auth;
+use auth::Claims;
 
 #[derive(Parser)]
 pub struct Config {
@@ -25,10 +26,14 @@ pub struct Config {
     /// Email domain for generated mailbox addresses (e.g. 'example.com')
     #[arg(long, env = "EMAIL_DOMAIN", default_value = "example.com")]
     pub email_domain: String,
+
+    /// Web app URL (e.g. 'https://example.com')
+    #[arg(long, env = "WEB_APP_URL", default_value = "https://example.com")]
+    pub web_app_url: String,
 }
 
-pub struct AppState {
-    db: Arc<dyn Database>,
+pub struct AppState<D: Database> {
+    db: Arc<D>,
     email_domain: String,
 }
 
@@ -82,6 +87,7 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
     let app = create_app(
         db,
         config.email_domain,
+        config.web_app_url,
     );
 
     let addr: SocketAddr = config.bind_addr.parse()?;
@@ -93,32 +99,43 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn create_app(
-    db: Arc<dyn Database>,
+pub fn create_app<D: Database + 'static>(
+    db: Arc<D>,
     email_domain: String,
+    web_app_url: String,
 ) -> Router {
     let state = Arc::new(AppState {
         db,
         email_domain,
     });
 
-    let cors = CorsLayer::permissive();
+    let web_app_url: Url = web_app_url.parse().unwrap();
+
+    let cors = CorsLayer::new()
+        .allow_origin(AllowOrigin::exact(HeaderValue::from_str(&web_app_url.origin().ascii_serialization()).unwrap()))
+        .allow_methods(Any)
+        .allow_headers(Any);
+
+    // Create a router for protected mailbox routes
+    let mailbox_routes = Router::new()
+        .route("/api/mailboxes", post(create_mailbox::<D>))
+        .route("/api/mailboxes/:id", get(get_mailbox::<D>))
+        .route("/api/mailboxes/:id", delete(delete_mailbox::<D>))
+        .route("/api/mailboxes/:id", patch(update_mailbox::<D>))
+        .route("/api/mailboxes/:id/emails", get(get_mailbox_emails::<D>))
+        .route("/api/mailboxes/:id/emails/:email_id", get(get_email::<D>))
+        .route("/api/mailboxes/:id/emails/:email_id", delete(delete_email::<D>));
 
     Router::new()
-        .route("/api/users", post(create_user))
-        .route("/api/mailboxes", post(create_mailbox))
-        .route("/api/mailboxes/:id", get(get_mailbox))
-        .route("/api/mailboxes/:id", delete(delete_mailbox))
-        .route("/api/mailboxes/:id", patch(update_mailbox))
-        .route("/api/mailboxes/:id/emails", get(get_mailbox_emails))
-        .route("/api/mailboxes/:id/emails/:email_id", get(get_email))
-        .route("/api/mailboxes/:id/emails/:email_id", delete(delete_email))
+        .merge(auth::create_routes::<D>())
+        .route("/api/users", post(create_user::<D>))
+        .nest("/", mailbox_routes.layer(middleware::from_fn(auth::auth::<D>)))
         .layer(cors)
         .with_state(state)
 }
 
-async fn create_user(
-    State(state): State<Arc<AppState>>,
+async fn create_user<D: Database>(
+    State(state): State<Arc<AppState<D>>>,
     Json(req): Json<CreateUserRequest>,
 ) -> Result<Json<ApiResponse<common::User>>, StatusCode> {
     match state.db.create_user(&req.username, req.auth_type).await {
@@ -130,13 +147,19 @@ async fn create_user(
     }
 }
 
-async fn create_mailbox(
-    State(state): State<Arc<AppState>>,
+async fn create_mailbox<D: Database>(
+    State(state): State<Arc<AppState<D>>>,
+    claims: axum::extract::Extension<Claims>,
     Json(req): Json<CreateMailboxRequest>,
 ) -> Result<Json<ApiResponse<Mailbox>>, StatusCode> {
+    // Ensure the owner_id matches the authenticated user
+    if req.owner_id != claims.sub {
+        return Ok(Json(ApiResponse::error("Unauthorized")));
+    }
+
     let expires_at = req.expires_in_days.map(|days| {
-        chrono::Utc::now() + chrono::Duration::days(days)
-    }).map(|dt| dt.timestamp());
+        (chrono::Utc::now() + chrono::Duration::days(days)).timestamp()
+    });
 
     let mailbox = Mailbox {
         id: uuid::Uuid::new_v4().to_string(),
@@ -156,12 +179,19 @@ async fn create_mailbox(
     }
 }
 
-async fn get_mailbox(
-    State(state): State<Arc<AppState>>,
+async fn get_mailbox<D: Database>(
+    State(state): State<Arc<AppState<D>>>,
+    claims: axum::extract::Extension<Claims>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<Mailbox>>, StatusCode> {
     match state.db.get_mailbox(&id).await {
-        Ok(Some(mailbox)) => Ok(Json(ApiResponse::success(mailbox))),
+        Ok(Some(mailbox)) => {
+            // Ensure the mailbox belongs to the authenticated user
+            if mailbox.owner_id != claims.sub {
+                return Ok(Json(ApiResponse::error("Unauthorized")));
+            }
+            Ok(Json(ApiResponse::success(mailbox)))
+        }
         Ok(None) => Ok(Json(ApiResponse::error("Mailbox not found"))),
         Err(e) => {
             error!("Failed to get mailbox: {}", e);
@@ -170,27 +200,47 @@ async fn get_mailbox(
     }
 }
 
-async fn delete_mailbox(
-    State(state): State<Arc<AppState>>,
+async fn delete_mailbox<D: Database>(
+    State(state): State<Arc<AppState<D>>>,
+    claims: axum::extract::Extension<Claims>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, StatusCode> {
-    match state.db.delete_mailbox(&id).await {
-        Ok(_) => Ok(Json(ApiResponse::success(()))),
+    // First check if the mailbox belongs to the authenticated user
+    match state.db.get_mailbox(&id).await {
+        Ok(Some(mailbox)) => {
+            if mailbox.owner_id != claims.sub {
+                return Ok(Json(ApiResponse::error("Unauthorized")));
+            }
+            match state.db.delete_mailbox(&id).await {
+                Ok(_) => Ok(Json(ApiResponse::success(()))),
+                Err(e) => {
+                    error!("Failed to delete mailbox: {}", e);
+                    Ok(Json(ApiResponse::error("Failed to delete mailbox")))
+                }
+            }
+        }
+        Ok(None) => Ok(Json(ApiResponse::error("Mailbox not found"))),
         Err(e) => {
-            error!("Failed to delete mailbox: {}", e);
-            Ok(Json(ApiResponse::error("Failed to delete mailbox")))
+            error!("Failed to get mailbox: {}", e);
+            Ok(Json(ApiResponse::error("Failed to get mailbox")))
         }
     }
 }
 
-async fn update_mailbox(
-    State(state): State<Arc<AppState>>,
+async fn update_mailbox<D: Database>(
+    State(state): State<Arc<AppState<D>>>,
+    claims: axum::extract::Extension<Claims>,
     Path(id): Path<String>,
     Json(req): Json<UpdateMailboxRequest>,
 ) -> Result<Json<ApiResponse<Mailbox>>, StatusCode> {
     let result: Result<Mailbox, AppError> = async {
         let mut mailbox = state.db.get_mailbox(&id).await?
             .ok_or_else(|| AppError::NotFound("Mailbox not found".into()))?;
+
+        // Ensure the mailbox belongs to the authenticated user
+        if mailbox.owner_id != claims.sub {
+            return Err(AppError::Auth("Unauthorized".into()));
+        }
 
         if let Some(days) = req.expires_in_days {
             mailbox.expires_at = Some((chrono::Utc::now() + chrono::Duration::days(days)).timestamp());
@@ -209,12 +259,17 @@ async fn update_mailbox(
     }
 }
 
-async fn get_mailbox_emails(
-    State(state): State<Arc<AppState>>,
+async fn get_mailbox_emails<D: Database>(
+    State(state): State<Arc<AppState<D>>>,
+    claims: axum::extract::Extension<Claims>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<Email>>>, StatusCode> {
+    // First check if the mailbox belongs to the authenticated user
     match state.db.get_mailbox(&id).await {
-        Ok(Some(_)) => {
+        Ok(Some(mailbox)) => {
+            if mailbox.owner_id != claims.sub {
+                return Ok(Json(ApiResponse::error("Unauthorized")));
+            }
             match state.db.get_mailbox_emails(&id).await {
                 Ok(emails) => Ok(Json(ApiResponse::success(emails))),
                 Err(e) => {
@@ -231,57 +286,77 @@ async fn get_mailbox_emails(
     }
 }
 
-async fn get_email(
-    State(state): State<Arc<AppState>>,
+async fn get_email<D: Database>(
+    State(state): State<Arc<AppState<D>>>,
+    claims: axum::extract::Extension<Claims>,
     Path((mailbox_id, email_id)): Path<(String, String)>,
 ) -> Result<Json<ApiResponse<Email>>, StatusCode> {
-    let result = async {
-        let _ = state.db.get_mailbox(&mailbox_id).await?
-            .ok_or_else(|| AppError::NotFound("Mailbox not found".into()))?;
-
-        let email = state.db.get_email(&email_id).await?
-            .ok_or_else(|| AppError::NotFound("Email not found".into()))?;
-
-        if email.mailbox_id != mailbox_id {
-            return Err(AppError::NotFound("Email not found in this mailbox".into()));
+    // First check if the mailbox belongs to the authenticated user
+    match state.db.get_mailbox(&mailbox_id).await {
+        Ok(Some(mailbox)) => {
+            if mailbox.owner_id != claims.sub {
+                return Ok(Json(ApiResponse::error("Unauthorized")));
+            }
+            match state.db.get_email(&email_id).await {
+                Ok(Some(email)) => {
+                    if email.mailbox_id != mailbox_id {
+                        return Ok(Json(ApiResponse::error("Email not found in this mailbox")));
+                    }
+                    Ok(Json(ApiResponse::success(email)))
+                }
+                Ok(None) => Ok(Json(ApiResponse::error("Email not found"))),
+                Err(e) => {
+                    error!("Failed to get email: {}", e);
+                    Ok(Json(ApiResponse::error("Failed to get email")))
+                }
+            }
         }
-
-        Ok(email)
-    }.await;
-
-    match result {
-        Ok(email) => Ok(Json(ApiResponse::success(email))),
+        Ok(None) => Ok(Json(ApiResponse::error("Mailbox not found"))),
         Err(e) => {
-            error!("Failed to get email: {}", e);
-            Ok(Json(ApiResponse::error(e.to_string())))
+            error!("Failed to get mailbox: {}", e);
+            Ok(Json(ApiResponse::error("Failed to get mailbox")))
         }
     }
 }
 
-async fn delete_email(
-    State(state): State<Arc<AppState>>,
+async fn delete_email<D: Database>(
+    State(state): State<Arc<AppState<D>>>,
+    claims: axum::extract::Extension<Claims>,
     Path((mailbox_id, email_id)): Path<(String, String)>,
 ) -> Result<Json<ApiResponse<()>>, StatusCode> {
-    let result = async {
-        let _ = state.db.get_mailbox(&mailbox_id).await?
-            .ok_or_else(|| AppError::NotFound("Mailbox not found".into()))?;
-
-        let email = state.db.get_email(&email_id).await?
-            .ok_or_else(|| AppError::NotFound("Email not found".into()))?;
-
-        if email.mailbox_id != mailbox_id {
-            return Err(AppError::NotFound("Email not found in this mailbox".into()));
+    // First check if the mailbox belongs to the authenticated user
+    match state.db.get_mailbox(&mailbox_id).await {
+        Ok(Some(mailbox)) => {
+            if mailbox.owner_id != claims.sub {
+                return Ok(Json(ApiResponse::error("Unauthorized")));
+            }
+            match state.db.get_email(&email_id).await {
+                Ok(Some(email)) => {
+                    if email.mailbox_id != mailbox_id {
+                        return Ok(Json(ApiResponse::error("Email not found in this mailbox")));
+                    }
+                    match state.db.delete_email(&email_id).await {
+                        Ok(_) => Ok(Json(ApiResponse::success(()))),
+                        Err(e) => {
+                            error!("Failed to delete email: {}", e);
+                            Ok(Json(ApiResponse::error("Failed to delete email")))
+                        }
+                    }
+                }
+                Ok(None) => Ok(Json(ApiResponse::error("Email not found"))),
+                Err(e) => {
+                    error!("Failed to get email: {}", e);
+                    Ok(Json(ApiResponse::error("Failed to get email")))
+                }
+            }
         }
-
-        state.db.delete_email(&email_id).await?;
-        Ok(())
-    }.await;
-
-    match result {
-        Ok(_) => Ok(Json(ApiResponse::success(()))),
+        Ok(None) => Ok(Json(ApiResponse::error("Mailbox not found"))),
         Err(e) => {
-            error!("Failed to delete email: {}", e);
-            Ok(Json(ApiResponse::error(e.to_string())))
+            error!("Failed to get mailbox: {}", e);
+            Ok(Json(ApiResponse::error("Failed to get mailbox")))
         }
     }
-} 
+}
+
+// Re-export auth types for public use
+pub use auth::{AuthResponse, LoginRequest, RegisterRequest}; 

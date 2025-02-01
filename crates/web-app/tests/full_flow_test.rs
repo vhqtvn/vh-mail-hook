@@ -1,6 +1,6 @@
 use axum::{
     response::Response,
-    http::{Request, StatusCode},
+    http::{Request, StatusCode, header},
     body::Body,
 };
 use common::{
@@ -10,10 +10,11 @@ use common::{
     User, 
     Email,
     security::decrypt_email,
+    AuthType,
 };
 use mail_service::{MailService, ServiceConfig};
 use serde_json::json;
-use std::{sync::Arc, net::IpAddr, time::Duration};
+use std::{sync::Arc, net::IpAddr, time::Duration, path::PathBuf, env};
 use tower::ServiceExt;
 use web_app::{create_app, ApiResponse};
 use http_body_util::BodyExt;
@@ -21,6 +22,8 @@ use tracing::{info, error};
 
 const TEST_PUBLIC_KEY: &str = "age1creym8a9ncefdvplrqrfy7wf8k3fw2l7w5z7nwp03jgfyhc56gcqgq27cg";
 const TEST_SECRET_KEY: &str = "AGE-SECRET-KEY-10Q6FGH2JQD9VS0ZM50KV7XVC8SAC50MM5DDH9DKWQR3RCSJKYM6QAX66U8";
+const TEST_USERNAME: &str = "test-user";
+const TEST_PASSWORD: &str = "test-password";
 
 async fn read_body<T>(response: Response) -> T 
 where
@@ -52,6 +55,13 @@ fn setup() {
         .try_init();
 }
 
+// Auth response type for tests
+#[derive(serde::Deserialize)]
+struct AuthResponse {
+    token: String,
+    user: User,
+}
+
 #[tokio::test]
 async fn test_complete_flow() -> anyhow::Result<()> {
     setup();
@@ -61,28 +71,45 @@ async fn test_complete_flow() -> anyhow::Result<()> {
     db.init().await?;
     let db = Arc::new(db);
     
-    // Set up web app
-    let app = create_app(db.clone(), "test.example.com".to_string());
+    // Set JWT secret for auth
+    std::env::set_var("JWT_SECRET", "test-secret-key");
     
-    // Create a test user
-    let create_user_response = app
+    // Set up migrations path
+    let workspace_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    let migrations_path = workspace_dir.join("common").join("migrations");
+    env::set_var("SQLX_MIGRATIONS_DIR", migrations_path);
+    
+    // Set up web app
+    let app = create_app(
+        db.clone(),
+        "test.example.com".to_string(),
+        "http://localhost:3000".to_string()
+    );
+    
+    // Register user with password
+    let register_response = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/users")
+                .uri("/auth/register")
                 .header("Content-Type", "application/json")
                 .body(Body::from(json!({
-                    "username": "test-user",
-                    "auth_type": "Password"
+                    "username": TEST_USERNAME,
+                    "password": TEST_PASSWORD
                 }).to_string()))
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    let user_response: ApiResponse<User> = read_body(create_user_response).await;
-    let user = user_response.data.unwrap();
+    let auth_response: ApiResponse<AuthResponse> = read_body(register_response).await;
+    let auth_data = auth_response.data.unwrap();
+    let user = auth_data.user;
+    let token = auth_data.token;
     
     // Create a mailbox with test public key
     let create_mailbox_response = app
@@ -92,6 +119,7 @@ async fn test_complete_flow() -> anyhow::Result<()> {
                 .method("POST")
                 .uri("/api/mailboxes")
                 .header("Content-Type", "application/json")
+                .header("Authorization", format!("Bearer {}", token))
                 .body(Body::from(json!({
                     "owner_id": user.id,
                     "expires_in_days": 7,
@@ -144,6 +172,7 @@ async fn test_complete_flow() -> anyhow::Result<()> {
             Request::builder()
                 .method("GET")
                 .uri(format!("/api/mailboxes/{}/emails", mailbox.id))
+                .header("Authorization", format!("Bearer {}", token))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -166,6 +195,7 @@ async fn test_complete_flow() -> anyhow::Result<()> {
             Request::builder()
                 .method("DELETE")
                 .uri(format!("/api/mailboxes/{}/emails/{}", mailbox.id, emails[0].id))
+                .header("Authorization", format!("Bearer {}", token))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -181,6 +211,7 @@ async fn test_complete_flow() -> anyhow::Result<()> {
             Request::builder()
                 .method("GET")
                 .uri(format!("/api/mailboxes/{}/emails", mailbox.id))
+                .header("Authorization", format!("Bearer {}", token))
                 .body(Body::empty())
                 .unwrap(),
         )

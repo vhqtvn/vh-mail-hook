@@ -19,6 +19,15 @@ anyhow = { workspace = true }
 clap = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
+oauth2 = "4.4"
+argon2 = "0.5"
+rand = "0.8"
+reqwest = { version = "0.11", features = ["json"] }
+jsonwebtoken = "9.2"
+base64 = "0.21"
+hmac = "0.12"
+sha2 = "0.10"
+sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite", "chrono"] }
 
 [dev-dependencies]
 tower = { version = "0.4", features = ["util"] }
