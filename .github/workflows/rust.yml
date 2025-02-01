@@ -10,43 +10,62 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  frontend-build:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: 'crates/web-app/frontend/.nvmrc'
+          
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+          
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Cache pnpm dependencies
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+            
+      - name: Install frontend dependencies
+        working-directory: crates/web-app/frontend
+        run: pnpm install --frozen-lockfile
+        
+      - name: Build frontend
+        working-directory: crates/web-app/frontend
+        run: pnpm build
+        
+      - name: Upload frontend build
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: crates/web-app/frontend/build
+          
   test:
     name: Run Tests
+    needs: frontend-build
     runs-on: ubuntu-latest
     
     steps:
     - uses: actions/checkout@v4
     
-    - name: Install Node.js
-      uses: actions/setup-node@v4
+    - name: Download frontend build
+      uses: actions/download-artifact@v4
       with:
-        node-version-file: 'crates/web-app/frontend/.nvmrc'
-        
-    - name: Install pnpm
-      uses: pnpm/action-setup@v2
-      with:
-        version: 9
-        
-    - name: Get pnpm store directory
-      shell: bash
-      run: |
-        echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
-
-    - name: Cache pnpm dependencies
-      uses: actions/cache@v3
-      with:
-        path: ${{ env.STORE_PATH }}
-        key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-        restore-keys: |
-          ${{ runner.os }}-pnpm-store-
-          
-    - name: Install frontend dependencies
-      working-directory: crates/web-app/frontend
-      run: pnpm install --frozen-lockfile
-      
-    - name: Build frontend
-      working-directory: crates/web-app/frontend
-      run: pnpm build
+        name: frontend-build
+        path: crates/web-app/frontend/build
     
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@stable
@@ -67,10 +86,17 @@ jobs:
 
   clippy:
     name: Clippy
+    needs: frontend-build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       
+      - name: Download frontend build
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build
+          path: crates/web-app/frontend/build
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
