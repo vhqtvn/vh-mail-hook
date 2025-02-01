@@ -5,7 +5,7 @@ import { get } from '$lib/api';
 export const load: Load = async ({ fetch }) => {
   // Check authentication status
   try {
-    const response = await get('/api/auth/me', { requireAuth: false });
+    const response = await get('/api/auth/me', { requireAuth: true });
     if (response.ok) {
       const user = await response.json();
       auth.setUser(user);
@@ -15,6 +15,7 @@ export const load: Load = async ({ fetch }) => {
     }
   } catch (e: any) {
     // Ignore error, user is not authenticated
+    localStorage.removeItem('auth_token');
   }
 
   return {

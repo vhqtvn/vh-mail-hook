@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { post } from '$lib/api';
+  import { post, setAuthToken } from '$lib/api';
 
   let username = '';
   let password = '';
@@ -21,6 +21,8 @@
         throw new Error(data.message || 'Login failed');
       }
 
+      const data = await response.json();
+      setAuthToken(data.data.token);
       window.location.href = '/mailboxes';
     } catch (e: any) {
       error = e.message;

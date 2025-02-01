@@ -118,6 +118,7 @@ pub fn create_app<D: Database + 'static>(
 
     // Create a router for protected mailbox routes
     let mailbox_routes = Router::new()
+        .route("/api/mailboxes", get(list_mailboxes::<D>))
         .route("/api/mailboxes", post(create_mailbox::<D>))
         .route("/api/mailboxes/:id", get(get_mailbox::<D>))
         .route("/api/mailboxes/:id", delete(delete_mailbox::<D>))
@@ -382,6 +383,19 @@ async fn delete_email<D: Database>(
         Err(e) => {
             error!("Failed to get mailbox: {}", e);
             Ok(Json(ApiResponse::error("Failed to get mailbox")))
+        }
+    }
+}
+
+async fn list_mailboxes<D: Database>(
+    State(state): State<Arc<AppState<D>>>,
+    claims: axum::extract::Extension<Claims>,
+) -> Result<Json<ApiResponse<Vec<Mailbox>>>, StatusCode> {
+    match state.db.get_mailboxes_by_owner(&claims.sub).await {
+        Ok(mailboxes) => Ok(Json(ApiResponse::success(mailboxes))),
+        Err(e) => {
+            error!("Failed to list mailboxes: {}", e);
+            Ok(Json(ApiResponse::error("Failed to list mailboxes")))
         }
     }
 }
