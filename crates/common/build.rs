@@ -7,12 +7,10 @@ fn main() {
     // Also track individual migration files
     let migrations_dir = Path::new("migrations");
     if migrations_dir.exists() {
-        for entry in std::fs::read_dir(migrations_dir).unwrap() {
-            if let Ok(entry) = entry {
-                if let Some(ext) = entry.path().extension() {
-                    if ext == "sql" {
-                        println!("cargo:rerun-if-changed={}", entry.path().display());
-                    }
+        for entry in std::fs::read_dir(migrations_dir).unwrap().flatten() {
+            if let Some(ext) = entry.path().extension() {
+                if ext == "sql" {
+                    println!("cargo:rerun-if-changed={}", entry.path().display());
                 }
             }
         }

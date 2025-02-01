@@ -9,6 +9,18 @@ use mail_parser::Message;
 use trust_dns_resolver::TokioAsyncResolver;
 use crate::security::encryption::encrypt_email;
 
+#[derive(Clone)]
+pub struct ServiceConfig {
+    pub domain: String,
+    pub blocked_networks: Vec<IpNetwork>,
+    pub max_email_size: usize,
+    pub rate_limit_per_hour: u32,
+    pub enable_greylisting: bool,
+    pub greylist_delay: Duration,
+    pub enable_spf: bool,
+    pub enable_dkim: bool,
+}
+
 pub struct MailService {
     db: Arc<dyn Database>,
     domain: String,
@@ -27,32 +39,25 @@ pub struct MailService {
 impl MailService {
     pub async fn new(
         db: Arc<dyn Database>, 
-        domain: String,
-        blocked_networks: Vec<IpNetwork>,
-        max_email_size: usize,
-        rate_limit_per_hour: u32,
-        enable_greylisting: bool,
-        greylist_delay: Duration,
-        enable_spf: bool,
-        enable_dkim: bool,
+        config: ServiceConfig,
     ) -> Result<Self> {
         let rate_limiter = Arc::new(RateLimiter::direct(Quota::per_hour(
-            std::num::NonZeroU32::new(rate_limit_per_hour).unwrap()
+            std::num::NonZeroU32::new(config.rate_limit_per_hour).unwrap()
         )));
 
         let dns_resolver = TokioAsyncResolver::tokio_from_system_conf()?;
 
         Ok(Self { 
-            db, 
-            domain,
-            blocked_networks,
-            max_email_size,
+            db,
+            domain: config.domain,
+            blocked_networks: config.blocked_networks,
+            max_email_size: config.max_email_size,
             rate_limiter,
             greylist: Arc::new(DashMap::new()),
-            enable_greylisting,
-            greylist_delay,
-            enable_spf,
-            enable_dkim,
+            enable_greylisting: config.enable_greylisting,
+            greylist_delay: config.greylist_delay,
+            enable_spf: config.enable_spf,
+            enable_dkim: config.enable_dkim,
             dns_resolver,
         })
     }

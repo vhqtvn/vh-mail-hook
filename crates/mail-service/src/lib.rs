@@ -5,7 +5,7 @@ pub mod security;
 
 use anyhow::Result;
 pub use config::Config;  // Re-export Config
-pub use service::MailService;  // Re-export MailService
+pub use service::{MailService, ServiceConfig};  // Re-export MailService and ServiceConfig
 use smtp::server::run_smtp_server;
 use std::sync::Arc;
 use std::time::Duration;
@@ -18,17 +18,21 @@ pub async fn run(mut config: Config) -> Result<()> {
         .filter_map(|cidr| cidr.parse().ok())
         .collect();
 
+    let service_config = ServiceConfig {
+        domain: config.email_domain.clone(),
+        blocked_networks,
+        max_email_size: config.max_email_size,
+        rate_limit_per_hour: config.rate_limit_per_hour,
+        enable_greylisting: config.enable_greylisting,
+        greylist_delay: Duration::from_secs(config.greylist_delay * 60),
+        enable_spf: config.enable_spf,
+        enable_dkim: config.enable_dkim,
+    };
+
     let db = common::db::SqliteDatabase::new(&format!("sqlite:{}", config.database_path)).await?;
     let service = Arc::new(MailService::new(
         Arc::new(db),
-        config.email_domain.clone(),
-        blocked_networks,
-        config.max_email_size,
-        config.rate_limit_per_hour,
-        config.enable_greylisting,
-        Duration::from_secs(config.greylist_delay * 60),
-        config.enable_spf,
-        config.enable_dkim,
+        service_config,
     ).await?);
 
     // Start cleanup task

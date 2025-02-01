@@ -11,7 +11,6 @@ use tower_http::cors::CorsLayer;
 use tracing::{info, error};
 use clap::Parser;
 use tokio::net::TcpListener;
-use uuid;
 
 #[derive(Parser)]
 pub struct Config {
