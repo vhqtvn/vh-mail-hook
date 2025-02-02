@@ -14,8 +14,9 @@ export const load: Load = async ({ fetch }) => {
       };
     }
   } catch (e: any) {
-    // Ignore error, user is not authenticated
-    localStorage.removeItem('auth_token');
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem('auth_token');
+    }
   }
 
   return {

@@ -22,6 +22,7 @@ export async function fetchApi(endpoint: string, options: FetchOptions = {}) {
 
   const defaultHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
+    'Accept': 'application/json',
   };
 
   if (requireAuth) {
