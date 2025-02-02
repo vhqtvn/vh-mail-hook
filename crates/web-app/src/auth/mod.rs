@@ -111,7 +111,7 @@ async fn login_handler<D: Database>(
         &req.password,
         credentials.password_hash.as_deref().unwrap_or_default(),
     )? {
-        return Ok(Json(ApiResponse::error("Invalid password".to_string())));
+        return Err(AppError::Auth("Invalid password".to_string()));
     }
 
     // Generate JWT token

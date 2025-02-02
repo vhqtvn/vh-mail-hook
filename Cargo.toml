@@ -23,6 +23,7 @@ sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite", "chrono", "uuid
 uuid = { version = "1.6", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.4", features = ["derive", "env"] }
+dotenv = "0.15"
 
 [package]
 name = "vh-mail-hook"
@@ -40,3 +41,4 @@ tracing-subscriber = { workspace = true }
 mail-service = { path = "crates/mail-service" }
 web-app = { path = "crates/web-app" }
 common = { path = "crates/common" }
+dotenv = { workspace = true }

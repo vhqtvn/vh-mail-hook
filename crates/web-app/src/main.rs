@@ -1,9 +1,13 @@
 use tracing::info;
 use web_app::{Config, run};
 use clap::Parser;
+use dotenv;
 
 #[tokio::main]
 async fn main() {
+    // Load .env file if it exists
+    dotenv::dotenv().ok();
+
     // Initialize tracing
     tracing_subscriber::fmt::init();
 

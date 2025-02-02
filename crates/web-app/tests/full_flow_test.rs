@@ -135,11 +135,13 @@ async fn test_complete_flow() -> anyhow::Result<()> {
                 .uri("/api/mailboxes")
                 .header("Content-Type", "application/json")
                 .header("Authorization", format!("Bearer {}", token))
-                .body(Body::from(json!({
-                    "owner_id": user.id,
-                    "expires_in_days": 7,
-                    "public_key": TEST_PUBLIC_KEY
-                }).to_string()))
+                .body(Body::from(
+                    json!({
+                        "expires_in_days": 7,
+                        "public_key": TEST_PUBLIC_KEY
+                    })
+                    .to_string(),
+                ))
                 .unwrap(),
         )
         .await

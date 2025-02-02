@@ -1,6 +1,7 @@
 use clap::Parser;
 use tokio::try_join;
 use tracing::{error, info};
+use dotenv;
 
 #[derive(Parser)]
 pub struct Config {
@@ -75,6 +76,9 @@ pub struct Config {
 
 #[tokio::main]
 async fn main() {
+    // Load .env file if it exists
+    dotenv::dotenv().ok();
+
     // Initialize tracing
     tracing_subscriber::fmt::init();
 

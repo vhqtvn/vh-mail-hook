@@ -133,7 +133,6 @@ async fn test_create_mailbox() {
     let (owner_id, token) = create_test_user_with_auth(&mut app_service).await;
 
     let request_body = json!({
-        "owner_id": owner_id,
         "expires_in_days": 7,
         "public_key": TEST_PUBLIC_KEY
     });
@@ -182,7 +181,6 @@ async fn test_get_mailbox() {
                 .header("Authorization", format!("Bearer {}", token))
                 .body(Body::from(
                     json!({
-                        "owner_id": owner_id,
                         "expires_in_days": 7,
                         "public_key": TEST_PUBLIC_KEY
                     })
@@ -238,7 +236,6 @@ async fn test_update_mailbox() {
                 .header("Authorization", format!("Bearer {}", token))
                 .body(Body::from(
                     json!({
-                        "owner_id": owner_id,
                         "expires_in_days": 7,
                         "public_key": TEST_PUBLIC_KEY
                     })
@@ -312,7 +309,6 @@ async fn test_delete_mailbox() {
                 .header("Authorization", format!("Bearer {}", token))
                 .body(Body::from(
                     json!({
-                        "owner_id": owner_id,
                         "expires_in_days": 7,
                         "public_key": TEST_PUBLIC_KEY
                     })
@@ -378,7 +374,6 @@ async fn test_get_mailbox_emails() {
                 .header("Authorization", format!("Bearer {}", token))
                 .body(Body::from(
                     json!({
-                        "owner_id": owner_id,
                         "expires_in_days": 7,
                         "public_key": TEST_PUBLIC_KEY
                     })
