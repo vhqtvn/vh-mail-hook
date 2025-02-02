@@ -1,7 +1,6 @@
 use clap::Parser;
 use tokio::try_join;
 use tracing::{error, info};
-use dotenv;
 
 #[derive(Parser)]
 pub struct Config {

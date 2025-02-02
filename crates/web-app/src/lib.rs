@@ -71,7 +71,6 @@ impl<T> ApiResponse<T> {
 #[derive(Debug, Deserialize)]
 pub struct CreateMailboxRequest {
     expires_in_days: Option<i64>,
-    owner_id: String,
     public_key: String,
 }
 
@@ -181,11 +180,6 @@ async fn create_mailbox<D: Database>(
     claims: axum::extract::Extension<Claims>,
     Json(req): Json<CreateMailboxRequest>,
 ) -> Result<Json<ApiResponse<Mailbox>>, StatusCode> {
-    // Ensure the owner_id matches the authenticated user
-    if req.owner_id != claims.sub {
-        return Ok(Json(ApiResponse::error("Unauthorized")));
-    }
-
     let expires_at = req.expires_in_days.map(|days| {
         (chrono::Utc::now() + chrono::Duration::days(days)).timestamp()
     });
@@ -194,7 +188,7 @@ async fn create_mailbox<D: Database>(
         id: uuid::Uuid::new_v4().to_string(),
         address: format!("{}@{}", uuid::Uuid::new_v4(), state.email_domain),
         public_key: req.public_key,
-        owner_id: req.owner_id,
+        owner_id: claims.sub.clone(),
         created_at: chrono::Utc::now().timestamp(),
         expires_at,
     };

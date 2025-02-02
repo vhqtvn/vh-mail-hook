@@ -297,7 +297,7 @@ async fn test_delete_mailbox() {
     let mut app_service = app.into_service();
 
     // Create a test user with auth
-    let (owner_id, token) = create_test_user_with_auth(&mut app_service).await;
+    let (_owner_id, token) = create_test_user_with_auth(&mut app_service).await;
 
     // First create a mailbox
     let create_response = app_service
@@ -362,7 +362,7 @@ async fn test_get_mailbox_emails() {
     let mut app_service = app.into_service();
 
     // Create a test user with auth
-    let (owner_id, token) = create_test_user_with_auth(&mut app_service).await;
+    let (_owner_id, token) = create_test_user_with_auth(&mut app_service).await;
 
     // First create a mailbox
     let create_response = app_service
