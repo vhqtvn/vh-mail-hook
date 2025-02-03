@@ -201,7 +201,7 @@ impl Database for SqliteDatabase {
 
     async fn create_mailbox(&self, mailbox: &Mailbox) -> Result<(), AppError> {
         sqlx::query(
-            "INSERT INTO mailboxes (id, alias, name, public_key, owner_id, created_at, expires_at) 
+            "INSERT INTO mailboxes (id, alias, name, public_key, owner_id, created_at, mail_expires_in) 
              VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&mailbox.id)
@@ -210,7 +210,7 @@ impl Database for SqliteDatabase {
         .bind(&mailbox.public_key)
         .bind(&mailbox.owner_id)
         .bind(mailbox.created_at)
-        .bind(mailbox.expires_at)
+        .bind(mailbox.mail_expires_in)
         .execute(&self.pool)
         .await
         .map_err(|e| AppError::Database(e.to_string()))?;
@@ -233,7 +233,7 @@ impl Database for SqliteDatabase {
                 public_key: row.get("public_key"),
                 owner_id: row.get("owner_id"),
                 created_at: row.get("created_at"),
-                expires_at: row.get("expires_at"),
+                mail_expires_in: row.get("mail_expires_in"),
             })),
             None => Ok(None),
         }
@@ -254,7 +254,7 @@ impl Database for SqliteDatabase {
                 public_key: row.get("public_key"),
                 owner_id: row.get("owner_id"),
                 created_at: row.get("created_at"),
-                expires_at: row.get("expires_at"),
+                mail_expires_in: row.get("mail_expires_in"),
             })),
             None => Ok(None),
         }
@@ -276,7 +276,7 @@ impl Database for SqliteDatabase {
                 public_key: row.get("public_key"),
                 owner_id: row.get("owner_id"),
                 created_at: row.get("created_at"),
-                expires_at: row.get("expires_at"),
+                mail_expires_in: row.get("mail_expires_in"),
             })
             .collect())
     }
@@ -292,24 +292,21 @@ impl Database for SqliteDatabase {
     }
 
     async fn cleanup_expired_mailboxes(&self) -> Result<(), AppError> {
-        let now = chrono::Utc::now().timestamp();
-        sqlx::query("DELETE FROM mailboxes WHERE expires_at IS NOT NULL AND expires_at < ?")
-            .bind(now)
-            .execute(&self.pool)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
+        // Mailboxes don't expire, only their emails do
         Ok(())
     }
 
     async fn update_mailbox(&self, mailbox: &Mailbox) -> Result<(), AppError> {
-        sqlx::query("UPDATE mailboxes SET name = ?, expires_at = ? WHERE id = ?")
-            .bind(&mailbox.name)
-            .bind(mailbox.expires_at)
-            .bind(&mailbox.id)
-            .execute(&self.pool)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to update mailbox: {}", e)))?;
+        sqlx::query(
+            "UPDATE mailboxes SET name = ?, public_key = ?, mail_expires_in = ? WHERE id = ?",
+        )
+        .bind(&mailbox.name)
+        .bind(&mailbox.public_key)
+        .bind(mailbox.mail_expires_in)
+        .bind(&mailbox.id)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::Database(e.to_string()))?;
 
         Ok(())
     }

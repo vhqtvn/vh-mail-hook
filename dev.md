@@ -8,7 +8,7 @@
 - Features:
     - Parses and processes incoming emails.
     - Encrypts emails using the mailbox's public key.
-    - Deletes expired emails and mailboxes based on their expiration settings.
+    - Deletes expired emails based on their expiration settings (mailboxes don't expire).
 
 ### Web Application
 Interface for users and admins to interact with the system.
@@ -51,7 +51,7 @@ Interface for users and admins to interact with the system.
   - Emails are encrypted upon receipt.
   - Each mailbox has isolated and unique credentials.
 - **Resource Management**:
-  - Expiration policies for mailboxes and emails to ensure cleanup and efficient resource usage.
+  - Expiration policies for emails to ensure cleanup and efficient resource usage.
 - **Flexibility**:
   - Multiple authentication methods.
   - API for automation and advanced usage.

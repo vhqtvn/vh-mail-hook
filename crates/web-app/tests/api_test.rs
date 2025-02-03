@@ -256,7 +256,7 @@ async fn test_update_mailbox() {
     // Now update the mailbox
     let update_request = json!({
         "name": "Updated Test Mailbox",
-        "expires_in_seconds": 14 * 24 * 60 * 60 // 14 days in seconds
+        "expires_in_seconds": 3600 // 1 hour in seconds
     });
 
     let update_response = app_service
@@ -278,7 +278,7 @@ async fn test_update_mailbox() {
     assert!(update_response.success);
     let updated_mailbox = update_response.data.unwrap();
     assert_eq!(updated_mailbox.name, "Updated Test Mailbox");
-    assert!(updated_mailbox.expires_at.unwrap() > mailbox.expires_at.unwrap());
+    assert_eq!(updated_mailbox.mail_expires_in.unwrap(), 3600); // 1 hour expiration
 }
 
 #[tokio::test]

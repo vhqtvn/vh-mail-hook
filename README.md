@@ -7,7 +7,7 @@ A secure email handling system with temporary mailboxes and encryption.
 ### Mail Service
 - Core service for receiving and routing emails
 - Handles email encryption and expiration
-- Automatic cleanup of expired mailboxes and emails
+- Automatic cleanup of expired emails (mailboxes don't expire)
 
 ### Web Application
 - RESTful API for mailbox management

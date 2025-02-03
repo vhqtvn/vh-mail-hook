@@ -178,12 +178,13 @@ impl MailService {
         // Encrypt email content using age encryption
         let encrypted_content = encrypt_email(raw_email, &mailbox.public_key)?;
 
+        let received_at = chrono::Utc::now().timestamp();
         let email = Email {
             id: uuid::Uuid::new_v4().to_string(),
             mailbox_id: mailbox.id.clone(),
             encrypted_content,
-            received_at: chrono::Utc::now().timestamp(),
-            expires_at: mailbox.expires_at,
+            received_at,
+            expires_at: mailbox.mail_expires_in.map(|duration| received_at + duration),
         };
 
         self.db.save_email(&email).await?;

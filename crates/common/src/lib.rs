@@ -132,12 +132,12 @@ pub struct Mailbox {
     pub name: String,
     pub public_key: String,
     pub owner_id: String,
-    pub expires_at: Option<i64>,
+    pub mail_expires_in: Option<i64>,
     pub created_at: i64,
 }
 
 impl Mailbox {
-    pub fn new(owner_id: &str, _domain: &str, expires_at: Option<i64>) -> Self {
+    pub fn new(owner_id: &str, _domain: &str, mail_expires_in: Option<i64>) -> Self {
         let id = generate_random_id(12); // Use 12 characters for the ID
         let alias = generate_random_id(12); // Use 12 characters for the alias
         Self {
@@ -146,7 +146,7 @@ impl Mailbox {
             name: String::new(),
             public_key: String::new(),
             owner_id: owner_id.to_string(),
-            expires_at,
+            mail_expires_in,
             created_at: chrono::Utc::now().timestamp(),
         }
     }

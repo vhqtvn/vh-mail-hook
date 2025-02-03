@@ -185,10 +185,6 @@ async fn create_mailbox<D: Database>(
         }
     }
 
-    let expires_at = req.expires_in_seconds.map(|seconds| {
-        (chrono::Utc::now() + chrono::Duration::seconds(seconds)).timestamp()
-    });
-
     let mailbox = Mailbox {
         id: common::generate_random_id(12),
         alias: common::generate_random_id(12),
@@ -196,7 +192,7 @@ async fn create_mailbox<D: Database>(
         public_key: req.public_key,
         owner_id: claims.sub.clone(),
         created_at: chrono::Utc::now().timestamp(),
-        expires_at,
+        mail_expires_in: req.expires_in_seconds,
     };
     
     match state.db.create_mailbox(&mailbox).await {
@@ -287,7 +283,7 @@ async fn update_mailbox<D: Database>(
             if seconds > 30 * 24 * 60 * 60 {
                 return Err(AppError::Mail("Maximum expiration time is 30 days".into()));
             }
-            mailbox.expires_at = Some((chrono::Utc::now() + chrono::Duration::seconds(seconds)).timestamp());
+            mailbox.mail_expires_in = Some(seconds);
         }
 
         state.db.update_mailbox(&mailbox).await?;

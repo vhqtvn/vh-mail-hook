@@ -14,6 +14,7 @@
     owner_id: string;
     expires_at: number | null;
     created_at: number;
+    mail_expires_in: number;
   }
 
   let mailboxes: Mailbox[] = [];
@@ -207,9 +208,9 @@
             <div class="text-sm text-base-content/70">
               Created {new Date(mailbox.created_at * 1000).toLocaleDateString()}
             </div>
-            {#if mailbox.expires_at}
+            {#if mailbox.mail_expires_in}
               <div class="text-sm text-warning">
-                Expires {new Date(mailbox.expires_at * 1000).toLocaleString()}
+                Emails expire after {Math.floor(mailbox.mail_expires_in / 86400)} days
               </div>
             {/if}
           </div>

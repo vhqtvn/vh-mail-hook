@@ -64,7 +64,7 @@ async fn test_smtp_basic_flow() -> Result<()> {
         public_key: TEST_PUBLIC_KEY.to_string(),
         owner_id: test_user.id,
         created_at: chrono::Utc::now().timestamp(),
-        expires_at: Some(chrono::Utc::now().timestamp() + 3600),
+        mail_expires_in: Some(3600), // 1 hour expiration
     };
     
     // Create mailbox using database
@@ -145,7 +145,7 @@ async fn test_greylisting() -> Result<()> {
         public_key: TEST_PUBLIC_KEY.to_string(),
         owner_id: test_user.id,
         created_at: chrono::Utc::now().timestamp(),
-        expires_at: Some(chrono::Utc::now().timestamp() + 3600),
+        mail_expires_in: Some(3600), // 1 hour expiration
     };
     db.create_mailbox(&test_mailbox).await?;
     
@@ -194,7 +194,7 @@ async fn test_cleanup() -> Result<()> {
         public_key: TEST_PUBLIC_KEY.to_string(),
         owner_id: test_user.id,
         created_at: chrono::Utc::now().timestamp(),
-        expires_at: Some(chrono::Utc::now().timestamp() - 1), // Expired 1 second ago
+        mail_expires_in: Some(1), // 1 second expiration
     };
     
     // Create mailbox using database
@@ -210,8 +210,8 @@ async fn test_cleanup() -> Result<()> {
         "192.168.1.1".parse()?,
     ).await?;
     
-    // Wait a bit to ensure expiration
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    // Wait 2 seconds to ensure expiration (1 second expiry + 1 second buffer)
+    tokio::time::sleep(Duration::from_secs(2)).await;
     
     // Run cleanup
     service.cleanup_expired().await?;
