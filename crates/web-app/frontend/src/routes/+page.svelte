@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { page } from '$app/stores';
+import { auth } from '$lib/stores/auth';
 </script>
 
 <div class="min-h-[calc(100vh-4rem)]">
@@ -12,7 +12,7 @@
           Create unlimited disposable email addresses to protect your privacy and keep your inbox clean.
           Perfect for signing up to services, testing, or avoiding spam.
         </p>
-        {#if !$page.data.user}
+        {#if !$auth}
           <div class="flex flex-col sm:flex-row gap-4 justify-center">
             <a href="/auth/register" class="btn btn-primary">Get Started</a>
             <a href="/auth/login" class="btn btn-outline">Sign In</a>
@@ -77,7 +77,7 @@
     <div class="container mx-auto px-4 text-center">
       <h2 class="text-3xl font-bold mb-4">Ready to Get Started?</h2>
       <p class="text-xl mb-8">Join thousands of users who trust Mail Hook for their email privacy needs.</p>
-      {#if !$page.data.user}
+      {#if !$auth}
         <div class="flex flex-col sm:flex-row gap-4 justify-center">
           <a href="/auth/register" class="btn btn-primary">Create Account</a>
           <a href="/auth/login" class="btn btn-outline">Sign In</a>

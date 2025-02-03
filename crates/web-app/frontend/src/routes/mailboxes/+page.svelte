@@ -35,6 +35,8 @@
   let publicKeyError = '';
   let generatingKey = false;
   let showPrivateKeyModal = false;
+  let supportedDomains: string[] = [];
+  let selectedDomain = '';
 
   function validatePublicKey(key: string): boolean {
     return validateAgePublicKey(key);
@@ -82,10 +84,37 @@
     );
   }
 
+  function formatExpirationTime(seconds: number): string {
+    if (seconds <= 0) return '0 seconds';
+    
+    const days = Math.floor(seconds / (24 * 60 * 60));
+    seconds %= (24 * 60 * 60);
+    const hours = Math.floor(seconds / (60 * 60));
+    seconds %= (60 * 60);
+    const minutes = Math.floor(seconds / 60);
+    seconds %= 60;
+
+    const parts: string[] = [];
+    if (days > 0) parts.push(`${days} ${days === 1 ? 'day' : 'days'}`);
+    if (hours > 0) parts.push(`${hours} ${hours === 1 ? 'hour' : 'hours'}`);
+    if (minutes > 0) parts.push(`${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`);
+    if (seconds > 0) parts.push(`${seconds} ${seconds === 1 ? 'second' : 'seconds'}`);
+
+    return parts.join(', ');
+  }
+
   onMount(async () => {
     try {
-      const response = await get<Mailbox[]>('/api/mailboxes');
-      mailboxes = response.data || [];
+      const [mailboxesResponse, domainsResponse] = await Promise.all([
+        get<Mailbox[]>('/api/mailboxes'),
+        get<{ domains: string[] }>('/api/supported-domains')
+      ]);
+      
+      mailboxes = mailboxesResponse.data || [];
+      supportedDomains = domainsResponse.data?.domains || [];
+      if (supportedDomains.length > 0) {
+        selectedDomain = supportedDomains[0];
+      }
     } catch (e) {
       error = e;
     } finally {
@@ -187,14 +216,13 @@
       </div>
     </div>
   {:else}
-    <div class="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+    <div class="grid gap-4 grid-cols-1">
       {#each mailboxes as mailbox (mailbox.id)}
         <div class="card bg-base-200">
           <div class="card-body">
             <div class="flex justify-between items-start">
               <div>
-                <h2 class="card-title">{mailbox.name}</h2>
-                <div class="text-sm text-base-content/70 break-all">{mailbox.address}</div>
+                <h2 class="card-title text-xl">{mailbox.name}</h2>
               </div>
               <button 
                 class="btn btn-square btn-sm btn-ghost text-error" 
@@ -205,14 +233,79 @@
                 </svg>
               </button>
             </div>
-            <div class="text-sm text-base-content/70">
-              Created {new Date(mailbox.created_at * 1000).toLocaleDateString()}
-            </div>
-            {#if mailbox.mail_expires_in}
-              <div class="text-sm text-warning">
-                Emails expire after {Math.floor(mailbox.mail_expires_in / 86400)} days
+
+            <div class="space-y-3">
+              <!-- Email Address -->
+              <div>
+                <div class="text-sm font-semibold mb-2">Email Address</div>
+                <div class="flex gap-2 items-center">
+                  <div class="text-base text-base-content/70 flex-1 font-mono bg-base-300 p-3 rounded">
+                    <span class="text-primary font-semibold">{mailbox.alias}@</span>
+                    {#if supportedDomains.length > 1}
+                      <div class="dropdown dropdown-hover inline-block">
+                        <span class="text-base-content/50 cursor-pointer" tabindex="0">{selectedDomain}</span>
+                        <ul tabindex="-1" class="dropdown-content z-[1] menu p-2 shadow bg-base-200 rounded-box">
+                          {#each supportedDomains as domain}
+                            <li>
+                              <button 
+                                class="whitespace-nowrap" 
+                                on:click={() => selectedDomain = domain}
+                              >
+                                {domain}
+                              </button>
+                            </li>
+                          {/each}
+                        </ul>
+                      </div>
+                    {:else}
+                      <span class="text-base-content/50">{supportedDomains[0] || 'any-supported-domain'}</span>
+                    {/if}
+                  </div>
+                  <button 
+                    class="btn btn-sm btn-ghost"
+                    on:click={() => {
+                      const domain = selectedDomain || supportedDomains[0] || 'any-supported-domain';
+                      navigator.clipboard.writeText(`${mailbox.alias}@${domain}`);
+                    }}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-12a2 2 0 00-2-2h-2M8 5a2 2 0 002 2h4a2 2 0 002-2M8 5a2 2 0 012-2h4a2 2 0 012 2" />
+                    </svg>
+                  </button>
+                </div>
               </div>
-            {/if}
+
+              <!-- Public Key -->
+              <div>
+                <div class="text-sm font-semibold mb-2">Public Key</div>
+                <div class="flex gap-2 items-center">
+                  <div class="text-base text-base-content/70 flex-1 font-mono bg-base-300 p-3 rounded">
+                    {mailbox.public_key}
+                  </div>
+                  <button 
+                    class="btn btn-sm btn-ghost"
+                    on:click={() => {
+                      navigator.clipboard.writeText(mailbox.public_key);
+                    }}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-12a2 2 0 00-2-2h-2M8 5a2 2 0 002 2h4a2 2 0 002-2M8 5a2 2 0 012-2h4a2 2 0 012 2" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <div class="flex justify-between items-center text-sm">
+                <div class="text-base-content/70">
+                  Created {new Date(mailbox.created_at * 1000).toLocaleDateString()}
+                </div>
+                {#if mailbox.mail_expires_in}
+                  <div class="text-warning">
+                    Emails expire after {formatExpirationTime(mailbox.mail_expires_in)}
+                  </div>
+                {/if}
+              </div>
+            </div>
           </div>
         </div>
       {/each}
@@ -317,13 +410,16 @@
             />
             <button 
               type="button" 
-              class="btn" 
+              class="btn"
               on:click|preventDefault={generatePublicKey}
               disabled={generatingKey}
             >
               {#if generatingKey}
                 <span class="loading loading-spinner loading-sm"></span>
               {:else}
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
                 Generate
               {/if}
             </button>
@@ -333,6 +429,14 @@
               <span class="label-text-alt text-error">{publicKeyError}</span>
             </label>
           {/if}
+          <label class="label">
+            <span class="label-text-alt text-info flex items-center gap-1">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>Keys are generated in your browser - private keys never leave your device</span>
+            </span>
+          </label>
         </div>
 
         <div class="modal-action">
@@ -354,6 +458,38 @@
       </p>
       <div class="bg-base-300 p-4 rounded-lg font-mono text-sm mb-4 break-all">
         {privateKey}
+      </div>
+      <div class="flex gap-2 mb-4">
+        <button 
+          class="btn btn-outline flex-1"
+          on:click={() => {
+            navigator.clipboard.writeText(privateKey);
+          }}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-12a2 2 0 00-2-2h-2M8 5a2 2 0 002 2h4a2 2 0 002-2M8 5a2 2 0 012-2h4a2 2 0 012 2" />
+          </svg>
+          Copy to Clipboard
+        </button>
+        <button 
+          class="btn btn-outline flex-1"
+          on:click={() => {
+            const blob = new Blob([privateKey], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'private_key.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          }}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          Download
+        </button>
       </div>
       <div class="modal-action">
         <button class="btn btn-primary" on:click={closePrivateKeyModal}>I've Saved It</button>

@@ -108,10 +108,10 @@ pub fn generate_random_id(len: usize) -> String {
         // Convert this chunk into 13 base-24 digits
         let mut tmp = val;
         let mut chunk = [0u8; CHUNK_SIZE];
-        for i in 0..CHUNK_SIZE {
-            chunk[i] = ID_CHARSET[(tmp % BASE) as usize];
+        chunk.iter_mut().take(CHUNK_SIZE).for_each(|digit| {
+            *digit = ID_CHARSET[(tmp % BASE) as usize];
             tmp /= BASE;
-        }
+        });
 
         // Append them in most-significant digit first (reverse order)
         for &c in chunk.iter().rev() {

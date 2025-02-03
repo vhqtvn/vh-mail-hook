@@ -1,5 +1,7 @@
 #!/bin/bash
 
+trap 'kill $(jobs -p)' EXIT
+
 is_port_open() {
     nc -z localhost $1
 }

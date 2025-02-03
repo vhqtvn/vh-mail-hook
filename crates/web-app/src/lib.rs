@@ -45,6 +45,11 @@ pub struct ApiResponse<T> {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct SupportedDomainsResponse {
+    domains: Vec<String>,
+}
+
 impl<T> ApiResponse<T> {
     fn success(data: T) -> Self {
         Self {
@@ -119,6 +124,7 @@ pub fn create_app<D: Database + 'static>(
         .route("/api/mailboxes/:id/emails", get(get_mailbox_emails::<D>))
         .route("/api/mailboxes/:id/emails/:email_id", get(get_email::<D>))
         .route("/api/mailboxes/:id/emails/:email_id", delete(delete_email::<D>))
+        .route("/api/supported-domains", get(get_supported_domains::<D>))
         .layer(middleware::from_fn(handle_json_response));
 
     Router::new()
@@ -409,6 +415,18 @@ async fn list_mailboxes<D: Database>(
             Ok(Json(ApiResponse::error("Unable to retrieve mailboxes. Please try again later")))
         }
     }
+}
+
+async fn get_supported_domains<D: Database>(
+    State(_state): State<Arc<AppState<D>>>,
+) -> Result<Json<ApiResponse<SupportedDomainsResponse>>, StatusCode> {
+    // TODO: For now, return a hardcoded list. In the future, this could be configurable or fetched from a database
+    let domains = vec![
+        "mail-hook.example.com".to_string(),
+        // Add more supported domains here
+    ];
+    
+    Ok(Json(ApiResponse::success(SupportedDomainsResponse { domains })))
 }
 
 // Re-export auth types for public use
