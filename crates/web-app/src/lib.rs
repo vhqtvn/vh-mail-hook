@@ -2,7 +2,7 @@ use axum::{
     extract::{Json, Path, State}, http::{HeaderValue, StatusCode, header}, middleware, routing::{delete, get, patch, post}, Router,
     response::{IntoResponse, Response},
 };
-use common::{Mailbox, Email, db::Database, AppError};
+use common::{db::Database, handle_json_response, AppError, Email, Mailbox};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use std::{sync::Arc, net::SocketAddr};
@@ -65,13 +65,15 @@ impl<T> ApiResponse<T> {
 
 #[derive(Debug, Deserialize)]
 pub struct CreateMailboxRequest {
-    expires_in_days: Option<i64>,
+    name: String,
+    expires_in_seconds: Option<i64>,
     public_key: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateMailboxRequest {
-    expires_in_days: Option<i64>,
+    name: Option<String>,
+    expires_in_seconds: Option<i64>,
 }
 
 pub async fn run(config: Config) -> anyhow::Result<()> {
@@ -116,11 +118,12 @@ pub fn create_app<D: Database + 'static>(
         .route("/api/mailboxes/:id", patch(update_mailbox::<D>))
         .route("/api/mailboxes/:id/emails", get(get_mailbox_emails::<D>))
         .route("/api/mailboxes/:id/emails/:email_id", get(get_email::<D>))
-        .route("/api/mailboxes/:id/emails/:email_id", delete(delete_email::<D>));
+        .route("/api/mailboxes/:id/emails/:email_id", delete(delete_email::<D>))
+        .layer(middleware::from_fn(handle_json_response));
 
     Router::new()
         .merge(auth::create_routes::<D>())
-        .nest("/", mailbox_routes.layer(middleware::from_fn(auth::auth)))
+        .nest("/", mailbox_routes.layer(middleware::from_fn(auth::auth)).layer(middleware::from_fn(handle_json_response)))
         .fallback(static_handler)
         .layer(cors)
         .with_state(state)
@@ -172,13 +175,24 @@ async fn create_mailbox<D: Database>(
     claims: axum::extract::Extension<Claims>,
     Json(req): Json<CreateMailboxRequest>,
 ) -> Result<Json<ApiResponse<Mailbox>>, StatusCode> {
-    let expires_at = req.expires_in_days.map(|days| {
-        (chrono::Utc::now() + chrono::Duration::days(days)).timestamp()
+    // Validate expiration time
+    if let Some(seconds) = req.expires_in_seconds {
+        if seconds <= 0 {
+            return Ok(Json(ApiResponse::error("Expiration time must be positive")));
+        }
+        if seconds > 30 * 24 * 60 * 60 {
+            return Ok(Json(ApiResponse::error("Maximum expiration time is 30 days")));
+        }
+    }
+
+    let expires_at = req.expires_in_seconds.map(|seconds| {
+        (chrono::Utc::now() + chrono::Duration::seconds(seconds)).timestamp()
     });
 
     let mailbox = Mailbox {
         id: common::generate_random_id(12),
         alias: common::generate_random_id(12),
+        name: req.name,
         public_key: req.public_key,
         owner_id: claims.sub.clone(),
         created_at: chrono::Utc::now().timestamp(),
@@ -189,7 +203,12 @@ async fn create_mailbox<D: Database>(
         Ok(_) => Ok(Json(ApiResponse::success(mailbox))),
         Err(e) => {
             error!("Failed to create mailbox: {}", e);
-            Ok(Json(ApiResponse::error("Failed to create mailbox")))
+            // Check if it's a unique constraint violation
+            if e.to_string().contains("UNIQUE constraint failed") {
+                Ok(Json(ApiResponse::error("A mailbox with this alias already exists")))
+            } else {
+                Ok(Json(ApiResponse::error("Unable to create mailbox. Please try again later")))
+            }
         }
     }
 }
@@ -203,14 +222,14 @@ async fn get_mailbox<D: Database>(
         Ok(Some(mailbox)) => {
             // Ensure the mailbox belongs to the authenticated user
             if mailbox.owner_id != claims.sub {
-                return Ok(Json(ApiResponse::error("Unauthorized")));
+                return Ok(Json(ApiResponse::error("You do not have permission to access this mailbox")));
             }
             Ok(Json(ApiResponse::success(mailbox)))
         }
         Ok(None) => Ok(Json(ApiResponse::error("Mailbox not found"))),
         Err(e) => {
-            error!("Failed to get mailbox: {}", e);
-            Ok(Json(ApiResponse::error("Failed to get mailbox")))
+            error!("Database error while getting mailbox: {}", e);
+            Ok(Json(ApiResponse::error("Unable to retrieve mailbox. Please try again later")))
         }
     }
 }
@@ -224,20 +243,20 @@ async fn delete_mailbox<D: Database>(
     match state.db.get_mailbox(&id).await {
         Ok(Some(mailbox)) => {
             if mailbox.owner_id != claims.sub {
-                return Ok(Json(ApiResponse::error("Unauthorized")));
+                return Ok(Json(ApiResponse::error("You do not have permission to delete this mailbox")));
             }
             match state.db.delete_mailbox(&id).await {
                 Ok(_) => Ok(Json(ApiResponse::success(()))),
                 Err(e) => {
-                    error!("Failed to delete mailbox: {}", e);
-                    Ok(Json(ApiResponse::error("Failed to delete mailbox")))
+                    error!("Database error while deleting mailbox: {}", e);
+                    Ok(Json(ApiResponse::error("Unable to delete mailbox. Please try again later")))
                 }
             }
         }
         Ok(None) => Ok(Json(ApiResponse::error("Mailbox not found"))),
         Err(e) => {
-            error!("Failed to get mailbox: {}", e);
-            Ok(Json(ApiResponse::error("Failed to get mailbox")))
+            error!("Database error while checking mailbox: {}", e);
+            Ok(Json(ApiResponse::error("Unable to process request. Please try again later")))
         }
     }
 }
@@ -257,8 +276,18 @@ async fn update_mailbox<D: Database>(
             return Err(AppError::Auth("Unauthorized".into()));
         }
 
-        if let Some(days) = req.expires_in_days {
-            mailbox.expires_at = Some((chrono::Utc::now() + chrono::Duration::days(days)).timestamp());
+        if let Some(name) = req.name {
+            mailbox.name = name;
+        }
+
+        if let Some(seconds) = req.expires_in_seconds {
+            if seconds <= 0 {
+                return Err(AppError::Mail("Expiration time must be positive".into()));
+            }
+            if seconds > 30 * 24 * 60 * 60 {
+                return Err(AppError::Mail("Maximum expiration time is 30 days".into()));
+            }
+            mailbox.expires_at = Some((chrono::Utc::now() + chrono::Duration::seconds(seconds)).timestamp());
         }
 
         state.db.update_mailbox(&mailbox).await?;
@@ -283,20 +312,20 @@ async fn get_mailbox_emails<D: Database>(
     match state.db.get_mailbox(&id).await {
         Ok(Some(mailbox)) => {
             if mailbox.owner_id != claims.sub {
-                return Ok(Json(ApiResponse::error("Unauthorized")));
+                return Ok(Json(ApiResponse::error("You do not have permission to access emails from this mailbox")));
             }
             match state.db.get_mailbox_emails(&id).await {
                 Ok(emails) => Ok(Json(ApiResponse::success(emails))),
                 Err(e) => {
-                    error!("Failed to get emails: {}", e);
-                    Ok(Json(ApiResponse::error("Failed to get emails")))
+                    error!("Database error while retrieving emails: {}", e);
+                    Ok(Json(ApiResponse::error("Unable to retrieve emails. Please try again later")))
                 }
             }
         }
         Ok(None) => Ok(Json(ApiResponse::error("Mailbox not found"))),
         Err(e) => {
-            error!("Failed to get mailbox: {}", e);
-            Ok(Json(ApiResponse::error("Failed to get mailbox")))
+            error!("Database error while checking mailbox: {}", e);
+            Ok(Json(ApiResponse::error("Unable to process request. Please try again later")))
         }
     }
 }
@@ -310,7 +339,7 @@ async fn get_email<D: Database>(
     match state.db.get_mailbox(&mailbox_id).await {
         Ok(Some(mailbox)) => {
             if mailbox.owner_id != claims.sub {
-                return Ok(Json(ApiResponse::error("Unauthorized")));
+                return Ok(Json(ApiResponse::error("You do not have permission to access this email")));
             }
             match state.db.get_email(&email_id).await {
                 Ok(Some(email)) => {
@@ -321,15 +350,15 @@ async fn get_email<D: Database>(
                 }
                 Ok(None) => Ok(Json(ApiResponse::error("Email not found"))),
                 Err(e) => {
-                    error!("Failed to get email: {}", e);
-                    Ok(Json(ApiResponse::error("Failed to get email")))
+                    error!("Database error while retrieving email: {}", e);
+                    Ok(Json(ApiResponse::error("Unable to retrieve email. Please try again later")))
                 }
             }
         }
         Ok(None) => Ok(Json(ApiResponse::error("Mailbox not found"))),
         Err(e) => {
-            error!("Failed to get mailbox: {}", e);
-            Ok(Json(ApiResponse::error("Failed to get mailbox")))
+            error!("Database error while checking mailbox: {}", e);
+            Ok(Json(ApiResponse::error("Unable to process request. Please try again later")))
         }
     }
 }
@@ -343,7 +372,7 @@ async fn delete_email<D: Database>(
     match state.db.get_mailbox(&mailbox_id).await {
         Ok(Some(mailbox)) => {
             if mailbox.owner_id != claims.sub {
-                return Ok(Json(ApiResponse::error("Unauthorized")));
+                return Ok(Json(ApiResponse::error("You do not have permission to delete this email")));
             }
             match state.db.get_email(&email_id).await {
                 Ok(Some(email)) => {
@@ -353,22 +382,22 @@ async fn delete_email<D: Database>(
                     match state.db.delete_email(&email_id).await {
                         Ok(_) => Ok(Json(ApiResponse::success(()))),
                         Err(e) => {
-                            error!("Failed to delete email: {}", e);
-                            Ok(Json(ApiResponse::error("Failed to delete email")))
+                            error!("Database error while deleting email: {}", e);
+                            Ok(Json(ApiResponse::error("Unable to delete email. Please try again later")))
                         }
                     }
                 }
                 Ok(None) => Ok(Json(ApiResponse::error("Email not found"))),
                 Err(e) => {
-                    error!("Failed to get email: {}", e);
-                    Ok(Json(ApiResponse::error("Failed to get email")))
+                    error!("Database error while checking email: {}", e);
+                    Ok(Json(ApiResponse::error("Unable to process request. Please try again later")))
                 }
             }
         }
         Ok(None) => Ok(Json(ApiResponse::error("Mailbox not found"))),
         Err(e) => {
-            error!("Failed to get mailbox: {}", e);
-            Ok(Json(ApiResponse::error("Failed to get mailbox")))
+            error!("Database error while checking mailbox: {}", e);
+            Ok(Json(ApiResponse::error("Unable to process request. Please try again later")))
         }
     }
 }
@@ -380,8 +409,8 @@ async fn list_mailboxes<D: Database>(
     match state.db.get_mailboxes_by_owner(&claims.sub).await {
         Ok(mailboxes) => Ok(Json(ApiResponse::success(mailboxes))),
         Err(e) => {
-            error!("Failed to list mailboxes: {}", e);
-            Ok(Json(ApiResponse::error("Failed to list mailboxes")))
+            error!("Database error while listing mailboxes: {}", e);
+            Ok(Json(ApiResponse::error("Unable to retrieve mailboxes. Please try again later")))
         }
     }
 }

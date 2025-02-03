@@ -15,7 +15,6 @@ use common::{
 use mail_service::{
     MailService, 
     ServiceConfig,
-    dns::{DnsResolver, MockDnsResolver},
 };
 use serde_json::json;
 use std::{sync::Arc, net::IpAddr, time::Duration, path::PathBuf, env};
@@ -140,7 +139,8 @@ async fn test_complete_flow() -> anyhow::Result<()> {
                 .header("Authorization", format!("Bearer {}", token))
                 .body(Body::from(
                     json!({
-                        "expires_in_days": 7,
+                        "name": "Test Mailbox",
+                        "expires_in_seconds": 7 * 24 * 60 * 60,
                         "public_key": TEST_PUBLIC_KEY
                     })
                     .to_string(),

@@ -19,4 +19,7 @@ chrono = { workspace = true }
 age = { version = "0.9", features = ["armor"] }
 base64 = "0.21"
 axum = { version = "0.7", features = ["macros"] }
-rand = "0.8" 
+rand = "0.8"
+futures = "0.3"
+http-body-util = "0.1"
+http-body = "1.0" 

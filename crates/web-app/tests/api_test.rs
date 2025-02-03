@@ -132,7 +132,8 @@ async fn test_create_mailbox() {
     let (owner_id, token) = create_test_user_with_auth(&mut app_service).await;
 
     let request_body = json!({
-        "expires_in_days": 7,
+        "name": "Test Mailbox",
+        "expires_in_seconds": 7 * 24 * 60 * 60, // 7 days in seconds
         "public_key": TEST_PUBLIC_KEY
     });
 
@@ -158,6 +159,7 @@ async fn test_create_mailbox() {
     assert!(response.data.is_some(), "Expected response data to be present");
     let mailbox = response.data.unwrap();
     assert_eq!(mailbox.owner_id, owner_id, "Owner ID mismatch");
+    assert_eq!(mailbox.name, "Test Mailbox", "Name mismatch");
     let full_address = mailbox.get_address("test.example.com");
     assert!(full_address.ends_with("@test.example.com"), "Invalid email address format");
     assert!(!mailbox.alias.is_empty(), "Alias should not be empty");
@@ -182,7 +184,8 @@ async fn test_get_mailbox() {
                 .header("Authorization", format!("Bearer {}", token))
                 .body(Body::from(
                     json!({
-                        "expires_in_days": 7,
+                        "name": "Test Mailbox",
+                        "expires_in_seconds": 7 * 24 * 60 * 60,
                         "public_key": TEST_PUBLIC_KEY
                     })
                     .to_string(),
@@ -225,9 +228,15 @@ async fn test_update_mailbox() {
     let mut app_service = app.into_service();
 
     // Create a test user with auth
-    let (owner_id, token) = create_test_user_with_auth(&mut app_service).await;
+    let (_, token) = create_test_user_with_auth(&mut app_service).await;
 
     // First create a mailbox
+    let create_request = json!({
+        "name": "Test Mailbox",
+        "expires_in_seconds": 7 * 24 * 60 * 60,
+        "public_key": TEST_PUBLIC_KEY
+    });
+
     let create_response = app_service
         .call(
             Request::builder()
@@ -235,22 +244,21 @@ async fn test_update_mailbox() {
                 .uri("/api/mailboxes")
                 .header("Content-Type", "application/json")
                 .header("Authorization", format!("Bearer {}", token))
-                .body(Body::from(
-                    json!({
-                        "expires_in_days": 7,
-                        "public_key": TEST_PUBLIC_KEY
-                    })
-                    .to_string(),
-                ))
+                .body(Body::from(create_request.to_string()))
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    let create_result: ApiResponse<Mailbox> = read_body(create_response).await;
-    let mailbox = create_result.data.unwrap();
+    let create_response: ApiResponse<Mailbox> = read_body(create_response).await;
+    let mailbox = create_response.data.unwrap();
 
-    // Update the mailbox
+    // Now update the mailbox
+    let update_request = json!({
+        "name": "Updated Test Mailbox",
+        "expires_in_seconds": 14 * 24 * 60 * 60 // 14 days in seconds
+    });
+
     let update_response = app_service
         .call(
             Request::builder()
@@ -258,12 +266,7 @@ async fn test_update_mailbox() {
                 .uri(format!("/api/mailboxes/{}", mailbox.id))
                 .header("Content-Type", "application/json")
                 .header("Authorization", format!("Bearer {}", token))
-                .body(Body::from(
-                    json!({
-                        "expires_in_days": 14
-                    })
-                    .to_string(),
-                ))
+                .body(Body::from(update_request.to_string()))
                 .unwrap(),
         )
         .await
@@ -271,24 +274,11 @@ async fn test_update_mailbox() {
 
     assert_eq!(update_response.status(), StatusCode::OK);
 
-    // Verify the update
-    let get_response = app_service
-        .call(
-            Request::builder()
-                .method("GET")
-                .uri(format!("/api/mailboxes/{}", mailbox.id))
-                .header("Authorization", format!("Bearer {}", token))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    let get_result: ApiResponse<Mailbox> = read_body(get_response).await;
-    assert!(get_result.success);
-    let updated_mailbox = get_result.data.unwrap();
-    assert_eq!(updated_mailbox.id, mailbox.id);
-    assert_eq!(updated_mailbox.owner_id, owner_id);
+    let update_response: ApiResponse<Mailbox> = read_body(update_response).await;
+    assert!(update_response.success);
+    let updated_mailbox = update_response.data.unwrap();
+    assert_eq!(updated_mailbox.name, "Updated Test Mailbox");
+    assert!(updated_mailbox.expires_at.unwrap() > mailbox.expires_at.unwrap());
 }
 
 #[tokio::test]
@@ -298,7 +288,7 @@ async fn test_delete_mailbox() {
     let mut app_service = app.into_service();
 
     // Create a test user with auth
-    let (_owner_id, token) = create_test_user_with_auth(&mut app_service).await;
+    let (_, token) = create_test_user_with_auth(&mut app_service).await;
 
     // First create a mailbox
     let create_response = app_service
@@ -310,7 +300,8 @@ async fn test_delete_mailbox() {
                 .header("Authorization", format!("Bearer {}", token))
                 .body(Body::from(
                     json!({
-                        "expires_in_days": 7,
+                        "name": "Test Mailbox",
+                        "expires_in_seconds": 7 * 24 * 60 * 60,
                         "public_key": TEST_PUBLIC_KEY
                     })
                     .to_string(),
@@ -363,7 +354,7 @@ async fn test_get_mailbox_emails() {
     let mut app_service = app.into_service();
 
     // Create a test user with auth
-    let (_owner_id, token) = create_test_user_with_auth(&mut app_service).await;
+    let (_, token) = create_test_user_with_auth(&mut app_service).await;
 
     // First create a mailbox
     let create_response = app_service
@@ -375,7 +366,8 @@ async fn test_get_mailbox_emails() {
                 .header("Authorization", format!("Bearer {}", token))
                 .body(Body::from(
                     json!({
-                        "expires_in_days": 7,
+                        "name": "Test Mailbox",
+                        "expires_in_seconds": 7 * 24 * 60 * 60,
                         "public_key": TEST_PUBLIC_KEY
                     })
                     .to_string(),

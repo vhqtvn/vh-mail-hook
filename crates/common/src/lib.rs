@@ -4,6 +4,9 @@ use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use thiserror::Error;
+use axum::middleware::Next;
+use axum::http::Request;
+use axum::body::Body;
 
 pub mod db;
 pub mod security;
@@ -25,6 +28,43 @@ pub enum AppError {
     NotFound(String),
 }
 
+pub async fn handle_json_response(
+    req: Request<Body>,
+    next: Next,
+) -> Response {
+    // Get the Accept header before processing
+    let wants_json = req
+        .headers()
+        .get("Accept")
+        .and_then(|h| h.to_str().ok())
+        .map(|h| h.contains("application/json"))
+        .unwrap_or(false);
+
+    // Process the request
+    let res = next.run(req).await;
+
+    // If not an error or doesn't want JSON, return as is
+    if res.status().is_success() || !wants_json {
+        return res;
+    }
+
+    // Convert error response to JSON
+    let status = res.status();
+    
+    // Create JSON error response
+    let error_response = serde_json::json!({
+        "success": false,
+        "error": status.to_string(),
+        "data": null
+    });
+    
+    (
+        status,
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        axum::Json(error_response)
+    ).into_response()
+}
+
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
@@ -35,7 +75,18 @@ impl IntoResponse for AppError {
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
         };
 
-        (status, message).into_response()
+        // Create JSON error response
+        let error_response = serde_json::json!({
+            "success": false,
+            "error": message,
+            "data": null
+        });
+        
+        (
+            status,
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            axum::Json(error_response)
+        ).into_response()
     }
 }
 
@@ -78,6 +129,7 @@ pub fn generate_random_id(len: usize) -> String {
 pub struct Mailbox {
     pub id: String,
     pub alias: String,
+    pub name: String,
     pub public_key: String,
     pub owner_id: String,
     pub expires_at: Option<i64>,
@@ -87,16 +139,15 @@ pub struct Mailbox {
 impl Mailbox {
     pub fn new(owner_id: &str, _domain: &str, expires_at: Option<i64>) -> Self {
         let id = generate_random_id(12); // Use 12 characters for the ID
-        let alias = generate_random_id(12);
-        let now = chrono::Utc::now();
-
+        let alias = generate_random_id(12); // Use 12 characters for the alias
         Self {
             id,
             alias,
-            public_key: "dummy_key".to_string(), // TODO: Implement proper key generation
+            name: String::new(),
+            public_key: String::new(),
             owner_id: owner_id.to_string(),
             expires_at,
-            created_at: now.timestamp(),
+            created_at: chrono::Utc::now().timestamp(),
         }
     }
 

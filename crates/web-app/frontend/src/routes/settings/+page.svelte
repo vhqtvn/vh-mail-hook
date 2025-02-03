@@ -1,12 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { get, post } from '$lib/api';
+  import ErrorAlert from '$lib/components/ErrorAlert.svelte';
 
   let currentPassword = '';
   let newPassword = '';
   let confirmNewPassword = '';
   let loading = false;
-  let error = '';
+  let error: unknown | null = null;
   let success = '';
 
   interface ConnectedAccount {
@@ -19,13 +20,10 @@
 
   onMount(async () => {
     try {
-      const response = await get('/api/auth/connected-accounts');
-      if (!response.ok) {
-        throw new Error('Failed to fetch connected accounts');
-      }
-      connectedAccounts = await response.json();
-    } catch (e: any) {
-      error = e.message;
+      const response = await get<ConnectedAccount[]>('/api/auth/connected-accounts');
+      connectedAccounts = response.data || [];
+    } catch (e) {
+      error = e;
     } finally {
       loadingAccounts = false;
     }
@@ -33,31 +31,26 @@
 
   async function changePassword() {
     if (newPassword !== confirmNewPassword) {
-      error = 'New passwords do not match';
+      error = new Error('New passwords do not match');
       return;
     }
 
     loading = true;
-    error = '';
+    error = null;
     success = '';
 
     try {
-      const response = await post('/api/auth/change-password', {
+      await post('/api/auth/change-password', {
         current_password: currentPassword,
         new_password: newPassword,
       });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.message || 'Failed to change password');
-      }
 
       success = 'Password changed successfully';
       currentPassword = '';
       newPassword = '';
       confirmNewPassword = '';
-    } catch (e: any) {
-      error = e.message;
+    } catch (e) {
+      error = e;
     } finally {
       loading = false;
     }
@@ -68,17 +61,14 @@
       return;
     }
 
+    error = null;
+    success = '';
     try {
-      const response = await post(`/api/auth/${provider}/disconnect`, {});
-
-      if (!response.ok) {
-        throw new Error(`Failed to disconnect ${provider} account`);
-      }
-
+      await post(`/api/auth/${provider}/disconnect`, {});
       connectedAccounts = connectedAccounts.filter(acc => acc.provider !== provider);
       success = `${provider} account disconnected successfully`;
-    } catch (e: any) {
-      error = e.message;
+    } catch (e) {
+      error = e;
     }
   }
 </script>
@@ -86,17 +76,13 @@
 <div class="container mx-auto px-4 py-8 max-w-2xl">
   <h1 class="text-3xl font-bold mb-8">Account Settings</h1>
 
-  {#if error}
-    <div class="alert alert-error mb-4">
-      <span>{error}</span>
-    </div>
-  {/if}
-
   {#if success}
     <div class="alert alert-success mb-4">
       <span>{success}</span>
     </div>
   {/if}
+
+  <ErrorAlert {error} className="mb-4" />
 
   <div class="card bg-base-200 mb-8">
     <div class="card-body">
@@ -112,6 +98,7 @@
             bind:value={currentPassword}
             class="input input-bordered w-full"
             required
+            autocomplete="current-password"
           />
         </div>
 
@@ -126,6 +113,7 @@
             class="input input-bordered w-full"
             required
             minlength="8"
+            autocomplete="new-password"
           />
         </div>
 
@@ -140,6 +128,7 @@
             class="input input-bordered w-full"
             required
             minlength="8"
+            autocomplete="new-password"
           />
         </div>
 

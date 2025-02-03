@@ -1,14 +1,17 @@
 <script lang="ts">
 	import '../app.css';
-	import { page } from '$app/stores';
 	import { onMount } from 'svelte';
-	import { removeAuthToken } from '$lib/api';
 	import { auth } from '$lib/stores/auth';
 
-	let theme: string;
+	let theme: string = 'light';
 
 	onMount(() => {
-		theme = document.documentElement.getAttribute('data-theme') || 'light';
+		// Initialize theme from localStorage or default to light
+		const savedTheme = localStorage.getItem('theme') || 'light';
+		theme = savedTheme;
+		document.documentElement.setAttribute('data-theme', savedTheme);
+		// Check auth status on mount
+		auth.checkAuth();
 	});
 
 	function toggleTheme() {
@@ -17,20 +20,10 @@
 		document.documentElement.setAttribute('data-theme', theme);
 	}
 
-	function handleLogout() {
-		removeAuthToken();
-		auth.logout();
-		window.location.href = '/';
+	async function handleLogout() {
+		await auth.logout();
 	}
 </script>
-
-<svelte:head>
-	<script>
-		// Initialize theme before page renders
-		const savedTheme = localStorage.getItem('theme') || 'light';
-		document.documentElement.setAttribute('data-theme', savedTheme);
-	</script>
-</svelte:head>
 
 <div class="min-h-screen bg-base-100">
 	<div class="navbar h-14 px-8 sm:px-12 bg-base-100 border-b border-base-200 shadow-sm">
@@ -45,7 +38,7 @@
 			</a>
 		</div>
 		<div class="flex items-center gap-6">
-			{#if !$page.data.user}
+			{#if !$auth}
 				<div class="flex items-center gap-4">
 					<a href="/auth/login" class="text-sm font-medium text-base-content/70 hover:text-primary transition-colors">Sign in</a>
 					<a href="/auth/register" class="inline-flex items-center h-8 px-3.5 rounded-lg bg-primary text-primary-content text-sm font-medium hover:bg-primary-focus transition-colors">Sign up</a>
@@ -64,7 +57,7 @@
 					<div class="tooltip tooltip-bottom" data-tip="Account Settings">
 						<label tabindex="0" class="avatar flex items-center gap-1 cursor-pointer group hover:opacity-90 transition-opacity">
 							<div class="w-8 h-8 rounded-full ring-2 ring-primary/20 group-hover:ring-primary/40 transition-all">
-								<img src={`https://ui-avatars.com/api/?name=${$page.data.user.email}&background=random`} alt="User avatar" />
+								<img src={`https://ui-avatars.com/api/?name=${$auth.email}&background=random`} alt="User avatar" />
 							</div>
 							<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-base-content/50 group-hover:text-base-content/70 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />

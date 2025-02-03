@@ -2,7 +2,7 @@ use std::{sync::Arc, net::IpAddr, time::Duration};
 use anyhow::Result;
 use common::{db::{Database, SqliteDatabase}, Mailbox, User, AuthType, security::decrypt_email};
 use mail_service::{MailService, ServiceConfig};
-use mail_service::dns::{DnsResolver, MockDnsResolver};
+use mail_service::dns::MockDnsResolver;
 use uuid::Uuid;
 
 // Test constants
@@ -60,6 +60,7 @@ async fn test_smtp_basic_flow() -> Result<()> {
     let test_mailbox = Mailbox {
         id: Uuid::new_v4().to_string(),
         alias: "test".to_string(),
+        name: "Test Mailbox".to_string(),
         public_key: TEST_PUBLIC_KEY.to_string(),
         owner_id: test_user.id,
         created_at: chrono::Utc::now().timestamp(),
@@ -140,6 +141,7 @@ async fn test_greylisting() -> Result<()> {
     let test_mailbox = Mailbox {
         id: Uuid::new_v4().to_string(),
         alias: "test".to_string(),
+        name: "Test Mailbox".to_string(),
         public_key: TEST_PUBLIC_KEY.to_string(),
         owner_id: test_user.id,
         created_at: chrono::Utc::now().timestamp(),
@@ -188,10 +190,11 @@ async fn test_cleanup() -> Result<()> {
     let test_mailbox = Mailbox {
         id: Uuid::new_v4().to_string(),
         alias: "test".to_string(),
+        name: "Test Mailbox".to_string(),
         public_key: TEST_PUBLIC_KEY.to_string(),
         owner_id: test_user.id,
         created_at: chrono::Utc::now().timestamp(),
-        expires_at: Some(chrono::Utc::now().timestamp()), // Set to expire immediately
+        expires_at: Some(chrono::Utc::now().timestamp() - 1), // Expired 1 second ago
     };
     
     // Create mailbox using database

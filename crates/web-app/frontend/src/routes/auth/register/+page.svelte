@@ -1,18 +1,20 @@
 <script lang="ts">
-  import { post } from '$lib/api';
+  import { post, setAuthToken } from '$lib/api';
+  import { auth } from '$lib/stores/auth';
+  import ErrorAlert from '$lib/components/ErrorAlert.svelte';
 
   let username = '';
   let password = '';
   let confirmPassword = '';
   let loading = false;
-  let error = '';
+  let error: unknown | null = null;
 
   async function handleSubmit() {
     loading = true;
-    error = '';
+    error = null;
 
     if (password !== confirmPassword) {
-      error = 'Passwords do not match';
+      error = new Error('Passwords do not match');
       loading = false;
       return;
     }
@@ -23,14 +25,13 @@
         { requireAuth: false }
       );
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.message || 'Registration failed');
+      if (!response.success || !response.data) {
+        throw new Error('Registration failed');
       }
 
-      window.location.href = '/mailboxes';
-    } catch (e: any) {
-      error = e.message;
+      await auth.register(response.data.token, response.data.user);
+    } catch (e) {
+      error = e;
     } finally {
       loading = false;
     }
@@ -41,11 +42,7 @@
   <h1 class="text-3xl font-bold text-center mb-8">Create Account</h1>
 
   <form on:submit|preventDefault={handleSubmit} class="space-y-4">
-    {#if error}
-      <div class="alert alert-error">
-        <span>{error}</span>
-      </div>
-    {/if}
+    <ErrorAlert {error} />
 
     <div class="form-control">
       <label class="label" for="username">
@@ -57,6 +54,7 @@
         bind:value={username}
         class="input input-bordered w-full"
         required
+        autocomplete="username"
       />
     </div>
 
@@ -71,6 +69,7 @@
         class="input input-bordered w-full"
         required
         minlength="8"
+        autocomplete="new-password"
       />
     </div>
 
@@ -85,6 +84,7 @@
         class="input input-bordered w-full"
         required
         minlength="8"
+        autocomplete="new-password"
       />
     </div>
 

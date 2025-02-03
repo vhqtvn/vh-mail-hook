@@ -201,11 +201,12 @@ impl Database for SqliteDatabase {
 
     async fn create_mailbox(&self, mailbox: &Mailbox) -> Result<(), AppError> {
         sqlx::query(
-            "INSERT INTO mailboxes (id, alias, public_key, owner_id, created_at, expires_at) 
-             VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO mailboxes (id, alias, name, public_key, owner_id, created_at, expires_at) 
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&mailbox.id)
         .bind(&mailbox.alias)
+        .bind(&mailbox.name)
         .bind(&mailbox.public_key)
         .bind(&mailbox.owner_id)
         .bind(mailbox.created_at)
@@ -228,6 +229,7 @@ impl Database for SqliteDatabase {
             Some(row) => Ok(Some(Mailbox {
                 id: row.get("id"),
                 alias: row.get("alias"),
+                name: row.get("name"),
                 public_key: row.get("public_key"),
                 owner_id: row.get("owner_id"),
                 created_at: row.get("created_at"),
@@ -248,6 +250,7 @@ impl Database for SqliteDatabase {
             Some(row) => Ok(Some(Mailbox {
                 id: row.get("id"),
                 alias: row.get("alias"),
+                name: row.get("name"),
                 public_key: row.get("public_key"),
                 owner_id: row.get("owner_id"),
                 created_at: row.get("created_at"),
@@ -269,6 +272,7 @@ impl Database for SqliteDatabase {
             .map(|row| Mailbox {
                 id: row.get("id"),
                 alias: row.get("alias"),
+                name: row.get("name"),
                 public_key: row.get("public_key"),
                 owner_id: row.get("owner_id"),
                 created_at: row.get("created_at"),
@@ -299,7 +303,8 @@ impl Database for SqliteDatabase {
     }
 
     async fn update_mailbox(&self, mailbox: &Mailbox) -> Result<(), AppError> {
-        sqlx::query("UPDATE mailboxes SET expires_at = ? WHERE id = ?")
+        sqlx::query("UPDATE mailboxes SET name = ?, expires_at = ? WHERE id = ?")
+            .bind(&mailbox.name)
             .bind(mailbox.expires_at)
             .bind(&mailbox.id)
             .execute(&self.pool)

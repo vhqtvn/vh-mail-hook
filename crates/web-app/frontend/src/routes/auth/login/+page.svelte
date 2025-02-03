@@ -1,14 +1,17 @@
 <script lang="ts">
   import { post, setAuthToken } from '$lib/api';
+  import ErrorAlert from '$lib/components/ErrorAlert.svelte';
+  import { auth } from '$lib/stores/auth';
+  import { goto, invalidateAll } from '$app/navigation';
 
   let username = '';
   let password = '';
   let loading = false;
-  let error = '';
+  let error: unknown | null = null;
 
   async function handleSubmit() {
     loading = true;
-    error = '';
+    error = null;
     
     try {
       const response = await post('/api/auth/login', 
@@ -16,16 +19,13 @@
         { requireAuth: false }
       );
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.message || 'Login failed');
+      if (!response.success || !response.data) {
+        throw new Error('Login failed');
       }
 
-      const data = await response.json();
-      setAuthToken(data.data.token);
-      window.location.href = '/mailboxes';
-    } catch (e: any) {
-      error = e.message;
+      await auth.login(response.data.token, response.data.user);
+    } catch (e) {
+      error = e;
     } finally {
       loading = false;
     }
@@ -36,11 +36,7 @@
   <h1 class="text-3xl font-bold text-center mb-8">Sign In</h1>
 
   <form on:submit|preventDefault={handleSubmit} class="space-y-4">
-    {#if error}
-      <div class="alert alert-error">
-        <span>{error}</span>
-      </div>
-    {/if}
+    <ErrorAlert {error} />
 
     <div class="form-control">
       <label class="label" for="username">
@@ -52,6 +48,7 @@
         bind:value={username}
         class="input input-bordered w-full"
         required
+        autocomplete="username"
       />
     </div>
 
@@ -65,6 +62,7 @@
         bind:value={password}
         class="input input-bordered w-full"
         required
+        autocomplete="current-password"
       />
     </div>
 

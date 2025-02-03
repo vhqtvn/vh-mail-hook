@@ -85,11 +85,23 @@ async fn register_handler<D: Database>(
     let user = state
         .db
         .create_user(&req.username, AuthType::Password)
-        .await?;
+        .await
+        .map_err(|e| {
+            tracing::error!("Database error during user creation: {}", e);
+            if e.to_string().contains("Duplicate entry") || e.to_string().contains("UNIQUE constraint failed") {
+                AppError::Auth("Username is already taken. Please choose a different username.".to_string())
+            } else {
+                AppError::Auth("Unable to create account. Please try again later or contact support if the problem persists.".to_string())
+            }
+        })?;
 
     // Hash password and store credentials
     let password_hash = password::hash_password(&req.password)?;
-    store_credentials(&state.db, &user.id, Some(&password_hash), None, None, None).await?;
+    store_credentials(&state.db, &user.id, Some(&password_hash), None, None, None).await
+        .map_err(|e| {
+            tracing::error!("Database error during credential storage: {}", e);
+            AppError::Auth("Account created but unable to set up credentials. Please try logging in, or contact support if you cannot access your account.".to_string())
+        })?;
 
     // Generate JWT token
     let token = create_token(&user.id)?;
@@ -103,15 +115,28 @@ async fn login_handler<D: Database>(
     Json(req): Json<LoginRequest>,
 ) -> Result<Json<ApiResponse<AuthResponse>>, AppError> {
     // Get user by username
-    let user = get_user_by_username(&state.db, &req.username).await?;
+    let user = get_user_by_username(&state.db, &req.username).await
+        .map_err(|e| {
+            if matches!(e, AppError::NotFound(_)) {
+                AppError::Auth("The username or password you entered is incorrect. Please check your credentials and try again.".to_string())
+            } else {
+                tracing::error!("Database error during login: {}", e);
+                AppError::Auth("Unable to process login request. Please try again later or contact support if the problem persists.".to_string())
+            }
+        })?;
 
     // Verify password
-    let credentials = get_credentials(&state.db, &user.id).await?;
+    let credentials = get_credentials(&state.db, &user.id).await
+        .map_err(|e| {
+            tracing::error!("Database error while fetching credentials: {}", e);
+            AppError::Auth("Unable to verify credentials. Please try again later or contact support if the problem persists.".to_string())
+        })?;
+    
     if !password::verify_password(
         &req.password,
         credentials.password_hash.as_deref().unwrap_or_default(),
     )? {
-        return Err(AppError::Auth("Invalid password".to_string()));
+        return Err(AppError::Auth("The username or password you entered is incorrect. Please check your credentials and try again.".to_string()));
     }
 
     // Generate JWT token
@@ -129,8 +154,11 @@ async fn me_handler<D: Database>(
         .bind(&claims.sub)
         .fetch_optional(state.db.pool())
         .await
-        .map_err(|e| AppError::Database(e.to_string()))?
-        .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+        .map_err(|e| {
+            tracing::error!("Database error while fetching user: {}", e);
+            AppError::Internal("Unable to fetch user profile. Please try refreshing the page or logging in again.".to_string())
+        })?
+        .ok_or_else(|| AppError::Auth("Your session has expired. Please log in again to continue.".to_string()))?;
 
     Ok(Json(ApiResponse::success(user)))
 }
@@ -145,14 +173,14 @@ pub async fn auth(req: Request<Body>, next: Next) -> Response {
     let auth_header = match auth_header {
         Some(header) => header,
         None => {
-            return (StatusCode::UNAUTHORIZED, "Missing authorization header").into_response();
+            return (StatusCode::UNAUTHORIZED, "Please log in to access this resource.").into_response();
         }
     };
 
     if !auth_header.starts_with("Bearer ") {
         return (
             StatusCode::UNAUTHORIZED,
-            "Invalid authorization header format",
+            "Invalid authentication format. Please log in again.",
         )
             .into_response();
     }
@@ -161,7 +189,7 @@ pub async fn auth(req: Request<Body>, next: Next) -> Response {
     let jwt_secret = match std::env::var("JWT_SECRET") {
         Ok(secret) => secret,
         Err(_) => {
-            return (StatusCode::INTERNAL_SERVER_ERROR, "JWT_SECRET not set").into_response();
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Authentication service is not properly configured. Please contact support.").into_response();
         }
     };
 
@@ -172,7 +200,12 @@ pub async fn auth(req: Request<Body>, next: Next) -> Response {
     ) {
         Ok(token_data) => token_data.claims,
         Err(e) => {
-            return (StatusCode::UNAUTHORIZED, format!("Invalid token: {}", e)).into_response();
+            let message = if e.to_string().contains("expired") {
+                "Your session has expired. Please log in again to continue."
+            } else {
+                "Invalid authentication token. Please log in again."
+            };
+            return (StatusCode::UNAUTHORIZED, message).into_response();
         }
     };
 
@@ -208,7 +241,10 @@ pub(crate) async fn store_credentials<D: Database>(
     .bind(now)
     .execute(db.pool())
     .await
-    .map_err(|e| AppError::Database(e.to_string()))?;
+    .map_err(|e| {
+        tracing::error!("Database error while storing credentials: {}", e);
+        AppError::Internal("Unable to set up user credentials. Please try logging in again, or contact support if the issue persists.".to_string())
+    })?;
 
     Ok(())
 }
@@ -221,8 +257,11 @@ pub(crate) async fn get_credentials<D: Database>(
         .bind(user_id)
         .fetch_optional(db.pool())
         .await
-        .map_err(|e| AppError::Database(e.to_string()))?
-        .ok_or_else(|| AppError::NotFound("User credentials not found".to_string()))
+        .map_err(|e| {
+            tracing::error!("Database error while fetching credentials: {}", e);
+            AppError::Internal("Unable to verify user credentials. Please try logging in again.".to_string())
+        })?
+        .ok_or_else(|| AppError::Auth("Account credentials not found. Please try logging in with a different method or contact support.".to_string()))
 }
 
 pub(crate) async fn get_user_by_username<D: Database>(
@@ -233,8 +272,11 @@ pub(crate) async fn get_user_by_username<D: Database>(
         .bind(username)
         .fetch_optional(db.pool())
         .await
-        .map_err(|e| AppError::Database(e.to_string()))?
-        .ok_or_else(|| AppError::NotFound("User not found".to_string()))
+        .map_err(|e| {
+            tracing::error!("Database error while fetching user by username: {}", e);
+            AppError::Internal("Unable to verify user account. Please try again later.".to_string())
+        })?
+        .ok_or_else(|| AppError::NotFound("Account not found. Please check your username or register a new account.".to_string()))
 }
 
 #[derive(Debug, sqlx::FromRow)]
