@@ -2,6 +2,8 @@
 	import '../app.css';
 	import { page } from '$app/stores';
 	import { onMount } from 'svelte';
+	import { removeAuthToken } from '$lib/api';
+	import { auth } from '$lib/stores/auth';
 
 	let theme = 'light';
 
@@ -16,6 +18,12 @@
 	function toggleTheme() {
 		theme = theme === 'light' ? 'dark' : 'light';
 		document.documentElement.setAttribute('data-theme', theme);
+	}
+
+	function handleLogout() {
+		removeAuthToken();
+		auth.logout();
+		window.location.href = '/';
 	}
 </script>
 
@@ -51,7 +59,7 @@
 					<ul class="mt-3 z-[1] p-2 shadow menu menu-sm dropdown-content bg-base-200 rounded-box w-52" role="menu">
 						<li role="none"><a href="/mailboxes" role="menuitem">Mailboxes</a></li>
 						<li role="none"><a href="/settings" role="menuitem">Settings</a></li>
-						<li role="none"><a href="/auth/logout" role="menuitem">Logout</a></li>
+						<li role="none"><button on:click={handleLogout} role="menuitem" class="w-full text-left">Logout</button></li>
 					</ul>
 				</div>
 			{/if}
