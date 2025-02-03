@@ -1,7 +1,6 @@
 use tracing::info;
 use web_app::{Config, run};
 use clap::Parser;
-use dotenv;
 
 #[tokio::main]
 async fn main() {
