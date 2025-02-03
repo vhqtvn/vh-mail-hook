@@ -11,10 +11,6 @@ pub struct Config {
     #[arg(long, env = "SMTP_BIND_ADDR", default_value = "127.0.0.1:2525")]
     pub smtp_bind_addr: String,
 
-    /// Email domain for receiving mail (e.g. 'example.com')
-    #[arg(long, env = "EMAIL_DOMAIN", default_value = "example.com")]
-    pub email_domain: String,
-
     /// TLS certificate file path (optional, enables TLS if provided)
     #[arg(long, env = "TLS_CERT_PATH")]
     pub tls_cert_path: Option<PathBuf>,

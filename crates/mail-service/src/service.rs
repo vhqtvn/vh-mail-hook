@@ -1,4 +1,7 @@
 use crate::security::encryption::encrypt_email;
+use crate::dns::{DnsResolver, TrustDnsResolver};
+#[cfg(any(test, feature = "test"))]
+use crate::dns::MockDnsResolver;
 use anyhow::Result;
 use common::{db::Database, AppError, Email};
 use dashmap::DashMap;
@@ -10,11 +13,9 @@ use ipnetwork::IpNetwork;
 use mail_parser::Message;
 use std::{net::IpAddr, sync::Arc, time::Duration};
 use tracing::{error, info, warn};
-use trust_dns_resolver::TokioAsyncResolver;
 
 #[derive(Clone)]
 pub struct ServiceConfig {
-    pub domain: String,
     pub blocked_networks: Vec<IpNetwork>,
     pub max_email_size: usize,
     pub rate_limit_per_hour: u32,
@@ -26,7 +27,6 @@ pub struct ServiceConfig {
 
 pub struct MailService {
     db: Arc<dyn Database>,
-    domain: String,
     blocked_networks: Vec<IpNetwork>,
     max_email_size: usize,
     rate_limiter: Arc<RateLimiter<NotKeyed, InMemoryState, governor::clock::DefaultClock>>,
@@ -35,8 +35,7 @@ pub struct MailService {
     greylist_delay: Duration,
     enable_spf: bool,
     enable_dkim: bool,
-    #[allow(unused)]
-    dns_resolver: TokioAsyncResolver,
+    dns_resolver: Arc<dyn DnsResolver>,
 }
 
 impl MailService {
@@ -45,11 +44,10 @@ impl MailService {
             std::num::NonZeroU32::new(config.rate_limit_per_hour).unwrap(),
         )));
 
-        let dns_resolver = TokioAsyncResolver::tokio_from_system_conf()?;
+        let dns_resolver = Arc::new(TrustDnsResolver::new().await?);
 
         Ok(Self {
             db,
-            domain: config.domain,
             blocked_networks: config.blocked_networks,
             max_email_size: config.max_email_size,
             rate_limiter,
@@ -62,8 +60,49 @@ impl MailService {
         })
     }
 
-    pub fn domain(&self) -> &str {
-        &self.domain
+    pub async fn new_with_resolver(
+        db: Arc<dyn Database>,
+        config: ServiceConfig,
+        dns_resolver: Arc<dyn DnsResolver>,
+    ) -> Result<Self> {
+        let rate_limiter = Arc::new(RateLimiter::direct(Quota::per_hour(
+            std::num::NonZeroU32::new(config.rate_limit_per_hour).unwrap(),
+        )));
+
+        Ok(Self {
+            db,
+            blocked_networks: config.blocked_networks,
+            max_email_size: config.max_email_size,
+            rate_limiter,
+            greylist: Arc::new(DashMap::new()),
+            enable_greylisting: config.enable_greylisting,
+            greylist_delay: config.greylist_delay,
+            enable_spf: config.enable_spf,
+            enable_dkim: config.enable_dkim,
+            dns_resolver,
+        })
+    }
+
+    #[cfg(any(test, feature = "test"))]
+    pub async fn with_mock_resolver(db: Arc<dyn Database>, config: ServiceConfig, mx_records: Vec<String>) -> Result<Self> {
+        let rate_limiter = Arc::new(RateLimiter::direct(Quota::per_hour(
+            std::num::NonZeroU32::new(config.rate_limit_per_hour).unwrap(),
+        )));
+
+        let dns_resolver = Arc::new(MockDnsResolver::new(mx_records));
+
+        Ok(Self {
+            db,
+            blocked_networks: config.blocked_networks,
+            max_email_size: config.max_email_size,
+            rate_limiter,
+            greylist: Arc::new(DashMap::new()),
+            enable_greylisting: config.enable_greylisting,
+            greylist_delay: config.greylist_delay,
+            enable_spf: config.enable_spf,
+            enable_dkim: config.enable_dkim,
+            dns_resolver,
+        })
     }
 
     pub fn max_email_size(&self) -> usize {
@@ -81,6 +120,16 @@ impl MailService {
             "Processing incoming email for recipient: {} from {}",
             recipient, sender
         );
+
+        // Extract local_part and domain from recipient
+        let (local_part, domain) = recipient.split_once('@')
+            .ok_or_else(|| AppError::Mail("Invalid recipient address format".to_string()))?;
+
+        // Check if domain has valid MX records
+        let mx_records = self.dns_resolver.mx_lookup(domain).await?;
+        if mx_records.is_empty() {
+            return Err(AppError::Mail("No MX records found for domain".to_string()));
+        }
 
         // Check greylisting if enabled
         if self.enable_greylisting {
@@ -122,7 +171,7 @@ impl MailService {
 
         let mailbox = self
             .db
-            .get_mailbox_by_address(recipient)
+            .get_mailbox_by_address(local_part)
             .await?
             .ok_or_else(|| AppError::Mail(format!("Mailbox not found: {}", recipient)))?;
 
@@ -191,5 +240,18 @@ impl MailService {
                 });
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_mock_resolver() {
+        let mock_records = vec!["test-mx.example.com".to_string()];
+        let resolver = MockDnsResolver::new(mock_records.clone());
+        let result = resolver.mx_lookup("example.com").await.unwrap();
+        assert_eq!(result, mock_records);
     }
 }

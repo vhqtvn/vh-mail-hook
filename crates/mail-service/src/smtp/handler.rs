@@ -1,7 +1,7 @@
-use mailin_embedded::{Response, Handler};
-use std::{net::IpAddr, sync::Arc, io};
-use tracing::{error, warn};
 use crate::service::MailService;
+use mailin_embedded::{Handler, Response};
+use std::{io, net::IpAddr, sync::Arc};
+use tracing::{error, warn};
 
 #[derive(Clone)]
 pub struct SmtpHandler {
@@ -53,19 +53,17 @@ impl Handler for SmtpHandler {
     fn rcpt(&mut self, to: &str) -> Response {
         // Extract email from RCPT TO:<email@domain>
         let email = to.trim_start_matches("TO:<").trim_end_matches('>');
-        
-        // Verify domain matches our domain
-        if let Some(domain) = email.split('@').nth(1) {
-            if domain == self.service.domain() {
-                self.recipients.push(email.to_string());
-                return Response::custom(250, "Recipient OK".to_string());
-            }
-        }
-        
-        Response::custom(550, "Relay not permitted".to_string())
+        self.recipients.push(email.to_string());
+        Response::custom(250, "Recipient OK".to_string())
     }
 
-    fn data_start(&mut self, _from: &str, _to: &str, _is_last: bool, _accepted: &[String]) -> Response {
+    fn data_start(
+        &mut self,
+        _from: &str,
+        _to: &str,
+        _is_last: bool,
+        _accepted: &[String],
+    ) -> Response {
         if self.recipients.is_empty() {
             return Response::custom(554, "No valid recipients".to_string());
         }
@@ -87,10 +85,13 @@ impl Handler for SmtpHandler {
         let service = self.service.clone();
         let sender = self.current_sender.clone().unwrap_or_default();
         let client_ip = self.client_ip;
-        
+
         tokio::spawn(async move {
             for recipient in recipients {
-                if let Err(e) = service.process_incoming_email(&mail_data, &recipient, &sender, client_ip).await {
+                if let Err(e) = service
+                    .process_incoming_email(&mail_data, &recipient, &sender, client_ip)
+                    .await
+                {
                     error!("Failed to process email for {}: {}", recipient, e);
                 }
             }
@@ -98,4 +99,4 @@ impl Handler for SmtpHandler {
 
         Response::custom(250, "OK".to_string())
     }
-} 
+}

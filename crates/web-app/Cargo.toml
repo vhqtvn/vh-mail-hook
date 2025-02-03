@@ -7,7 +7,7 @@ license.workspace = true
 
 [dependencies]
 common = { path = "../common" }
-mail-service = { path = "../mail-service" }
+mail-service = { path = "../mail-service", features = ["test"] }
 axum = { version = "0.7", features = ["macros", "json"] }
 tokio = { workspace = true }
 tower-http = { version = "0.5", features = ["cors"] }

@@ -5,6 +5,9 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[features]
+test = []
+
 [dependencies]
 clap = { workspace = true, features = ["env"] }
 common = { path = "../common" }

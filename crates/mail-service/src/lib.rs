@@ -2,10 +2,15 @@ pub mod config;
 pub mod service;
 pub mod smtp;
 pub mod security;
+pub mod dns;
 
 use anyhow::Result;
 pub use config::Config;  // Re-export Config
 pub use service::{MailService, ServiceConfig};  // Re-export MailService and ServiceConfig
+pub use dns::DnsResolver;  // Re-export DNS trait
+#[cfg(test)]
+pub use dns::MockDnsResolver;  // Re-export MockDnsResolver for testing
+
 use smtp::server::run_smtp_server;
 use std::sync::Arc;
 use std::time::Duration;
@@ -19,7 +24,6 @@ pub async fn run(mut config: Config) -> Result<()> {
         .collect();
 
     let service_config = ServiceConfig {
-        domain: config.email_domain.clone(),
         blocked_networks,
         max_email_size: config.max_email_size,
         rate_limit_per_hour: config.rate_limit_per_hour,

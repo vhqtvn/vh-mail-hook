@@ -1,12 +1,15 @@
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use thiserror::Error;
-use uuid::Uuid;
-use axum::response::{IntoResponse, Response};
-use axum::http::StatusCode;
 
 pub mod db;
 pub mod security;
+
+// 24 characters chosen to be visually distinct
+const ID_CHARSET: &[u8] = b"3479acdefhjkmnpqrstuvwxy";
 
 #[derive(Debug, Error)]
 pub enum AppError {
@@ -31,15 +34,50 @@ impl IntoResponse for AppError {
             AppError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
         };
-        
+
         (status, message).into_response()
     }
+}
+
+pub fn generate_random_id(len: usize) -> String {
+    const BASE: u128 = 24;
+    const CHUNK_SIZE: usize = 13;
+    const MAX_CHUNK_VALUE: u128 = BASE.pow(CHUNK_SIZE as u32);
+    let mut result = String::with_capacity(len);
+
+    while result.len() < len {
+        // Pull 64 bits; if >= 24^13, discard and retry
+        let val = loop {
+            let r = OsRng.next_u64() as u128;
+            if r < MAX_CHUNK_VALUE {
+                break r;
+            }
+        };
+
+        // Convert this chunk into 13 base-24 digits
+        let mut tmp = val;
+        let mut chunk = [0u8; CHUNK_SIZE];
+        for i in 0..CHUNK_SIZE {
+            chunk[i] = ID_CHARSET[(tmp % BASE) as usize];
+            tmp /= BASE;
+        }
+
+        // Append them in most-significant digit first (reverse order)
+        for &c in chunk.iter().rev() {
+            if result.len() == len {
+                break;
+            }
+            result.push(c as char);
+        }
+    }
+
+    result
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Mailbox {
     pub id: String,
-    pub address: String,
+    pub alias: String,
     pub public_key: String,
     pub owner_id: String,
     pub expires_at: Option<i64>,
@@ -47,19 +85,23 @@ pub struct Mailbox {
 }
 
 impl Mailbox {
-    pub fn new(owner_id: &str, domain: &str, expires_at: Option<i64>) -> Self {
-        let id = Uuid::new_v4().to_string();
-        let address = format!("{}@{}", Uuid::new_v4(), domain);
+    pub fn new(owner_id: &str, _domain: &str, expires_at: Option<i64>) -> Self {
+        let id = generate_random_id(12); // Use 12 characters for the ID
+        let alias = generate_random_id(12);
         let now = chrono::Utc::now();
 
         Self {
             id,
-            address,
+            alias,
             public_key: "dummy_key".to_string(), // TODO: Implement proper key generation
             owner_id: owner_id.to_string(),
             expires_at,
             created_at: now.timestamp(),
         }
+    }
+
+    pub fn get_address(&self, domain: &str) -> String {
+        format!("{}@{}", self.alias, domain)
     }
 }
 
@@ -80,8 +122,7 @@ pub struct User {
     pub created_at: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[derive(sqlx::Type)]
+#[derive(Debug, Serialize, Deserialize, Clone, sqlx::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "lowercase")]
 pub enum AuthType {
     Password,
@@ -104,4 +145,4 @@ pub struct UserSettings {
     pub email_notifications: bool,
     pub auto_delete_expired: bool,
     pub default_mailbox_expiry: Option<i64>,
-} 
+}

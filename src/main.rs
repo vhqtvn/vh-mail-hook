@@ -20,10 +20,6 @@ pub struct Config {
     #[arg(long, env = "SMTP_BIND_ADDR", default_value = "127.0.0.1:2525")]
     pub smtp_bind_addr: String,
 
-    /// Email domain for generated mailbox addresses (e.g. 'example.com')
-    #[arg(long, env = "EMAIL_DOMAIN", default_value = "example.com")]
-    pub email_domain: String,
-
     /// TLS certificate path (optional)
     #[arg(long, env = "TLS_CERT_PATH")]
     pub tls_cert_path: Option<std::path::PathBuf>,
@@ -90,7 +86,6 @@ async fn main() {
     let web_config = web_app::Config {
         database_path: config.database_path.clone(),
         bind_addr: config.web_bind_addr.clone(),
-        email_domain: config.email_domain.clone(),
         web_app_url: config.web_app_url.clone(),
     };
 
@@ -98,7 +93,6 @@ async fn main() {
     let mail_config = mail_service::Config {
         database_path: config.database_path.clone(),
         smtp_bind_addr: config.smtp_bind_addr.clone(),
-        email_domain: config.email_domain,
         tls_cert_path: config.tls_cert_path,
         tls_key_path: config.tls_key_path,
         tls_chain_path: config.tls_chain_path,

@@ -49,7 +49,6 @@ async fn setup_test_app() -> Router {
     info!("Database setup complete");
     create_app(
         db,
-        "test.example.com".to_string(),
         "http://localhost:3000".to_string()
     )
 }
@@ -159,7 +158,9 @@ async fn test_create_mailbox() {
     assert!(response.data.is_some(), "Expected response data to be present");
     let mailbox = response.data.unwrap();
     assert_eq!(mailbox.owner_id, owner_id, "Owner ID mismatch");
-    assert!(mailbox.address.ends_with("@test.example.com"), "Invalid email address format");
+    let full_address = mailbox.get_address("test.example.com");
+    assert!(full_address.ends_with("@test.example.com"), "Invalid email address format");
+    assert!(!mailbox.alias.is_empty(), "Alias should not be empty");
 }
 
 #[tokio::test]

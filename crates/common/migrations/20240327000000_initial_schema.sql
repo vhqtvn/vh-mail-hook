@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS mailboxes (
     id TEXT PRIMARY KEY,
-    address TEXT NOT NULL UNIQUE,
+    alias TEXT NOT NULL UNIQUE,
     public_key TEXT NOT NULL,
     owner_id TEXT NOT NULL,
     created_at INTEGER NOT NULL,

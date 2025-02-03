@@ -12,7 +12,11 @@ use common::{
     security::decrypt_email,
     AuthType,
 };
-use mail_service::{MailService, ServiceConfig};
+use mail_service::{
+    MailService, 
+    ServiceConfig,
+    dns::{DnsResolver, MockDnsResolver},
+};
 use serde_json::json;
 use std::{sync::Arc, net::IpAddr, time::Duration, path::PathBuf, env};
 use tower::ServiceExt;
@@ -95,7 +99,6 @@ async fn test_complete_flow() -> anyhow::Result<()> {
     // Set up web app
     let app = create_app(
         db.clone(),
-        "test.example.com".to_string(),
         "http://localhost:3000".to_string()
     );
     
@@ -153,7 +156,6 @@ async fn test_complete_flow() -> anyhow::Result<()> {
     
     // Set up mail service with the same database
     let config = ServiceConfig {
-        domain: "test.example.com".to_string(),
         blocked_networks: vec![],
         max_email_size: 1024 * 1024,
         rate_limit_per_hour: 100,
@@ -163,9 +165,10 @@ async fn test_complete_flow() -> anyhow::Result<()> {
         enable_dkim: false,
     };
 
-    let service = MailService::new(
+    let service = MailService::with_mock_resolver(
         db.clone(),
         config,
+        vec!["test-mx.test.example.com".to_string()],
     ).await?;
     
     // Send a test email
@@ -177,7 +180,7 @@ async fn test_complete_flow() -> anyhow::Result<()> {
     
     service.process_incoming_email(
         email_content.as_bytes(),
-        &mailbox.address,
+        &mailbox.get_address("test.example.com"),
         "sender@example.com",
         "192.168.1.1".parse::<IpAddr>()?,
     ).await?;

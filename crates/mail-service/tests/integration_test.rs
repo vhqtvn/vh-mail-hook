@@ -1,22 +1,25 @@
 use std::{sync::Arc, net::IpAddr, time::Duration};
 use anyhow::Result;
-use common::{db::Database, db::SqliteDatabase, Mailbox, User, AuthType, security::decrypt_email};
+use common::{db::{Database, SqliteDatabase}, Mailbox, User, AuthType, security::decrypt_email};
 use mail_service::{MailService, ServiceConfig};
+use mail_service::dns::{DnsResolver, MockDnsResolver};
 use uuid::Uuid;
 
-const TEST_PUBLIC_KEY: &str = "age1creym8a9ncefdvplrqrfy7wf8k3fw2l7w5z7nwp03jgfyhc56gcqgq27cg";
-const TEST_SECRET_KEY: &str = "AGE-SECRET-KEY-10Q6FGH2JQD9VS0ZM50KV7XVC8SAC50MM5DDH9DKWQR3RCSJKYM6QAX66U8";
+// Test constants
+const TEST_PUBLIC_KEY: &str = "age1f7s2nyhnfvvc4jkpt4hmk8zxunkkn98tzh586ajndwpsx86xs5vsqkjqvf";
+const TEST_SECRET_KEY: &str = "AGE-SECRET-KEY-1Q05RKVD23NKTSKEFMDN4ATCWMVG4WY8DR97YWC7CS2JMK2FDAVPSF5YJ38";
 
 // Test utilities
 async fn setup_test_db() -> Result<Arc<dyn Database>> {
-    let db = SqliteDatabase::new_in_memory().await?;
+    let db = SqliteDatabase::new("sqlite::memory:").await?;
     db.init().await?;  // Initialize the database schema
     Ok(Arc::new(db))
 }
 
 async fn create_test_user(db: &Arc<dyn Database>) -> Result<User> {
-    let username = format!("test_user_{}", Uuid::new_v4());
-    db.create_user(&username, AuthType::Password).await.map_err(|e| anyhow::anyhow!(e))
+    let username = "test_user".to_string();
+    let user = db.create_user(&username, AuthType::Password).await?;
+    Ok(user)
 }
 
 async fn setup_test_service(enable_greylisting: bool) -> Result<(Arc<MailService>, Arc<dyn Database>)> {
@@ -26,7 +29,6 @@ async fn setup_test_service(enable_greylisting: bool) -> Result<(Arc<MailService
     ];
     
     let config = ServiceConfig {
-        domain: "test.com".to_string(),
         blocked_networks,
         max_email_size: 1024 * 1024, // 1MB max email size
         rate_limit_per_hour: 100, // rate limit
@@ -36,9 +38,12 @@ async fn setup_test_service(enable_greylisting: bool) -> Result<(Arc<MailService
         enable_dkim: false, // disable DKIM for testing
     };
 
-    let service = MailService::new(
+    // Create a mock resolver with test MX records
+    let dns_resolver = Arc::new(MockDnsResolver::new(vec!["test-mx.test.com".to_string()]));
+    let service = MailService::new_with_resolver(
         db.clone(),
         config,
+        dns_resolver,
     ).await?;
     
     Ok((Arc::new(service), db))
@@ -54,7 +59,7 @@ async fn test_smtp_basic_flow() -> Result<()> {
     // Create a test mailbox
     let test_mailbox = Mailbox {
         id: Uuid::new_v4().to_string(),
-        address: "test@test.com".to_string(),
+        alias: "test".to_string(),
         public_key: TEST_PUBLIC_KEY.to_string(),
         owner_id: test_user.id,
         created_at: chrono::Utc::now().timestamp(),
@@ -74,7 +79,7 @@ async fn test_smtp_basic_flow() -> Result<()> {
     
     service.process_incoming_email(
         email_content.as_bytes(),
-        &test_mailbox.address,  // Use the actual mailbox address
+        &test_mailbox.get_address("test.com"),  // Use the helper method to get full address
         "sender@example.com",
         "192.168.1.1".parse()?,
     ).await?;
@@ -134,7 +139,7 @@ async fn test_greylisting() -> Result<()> {
     let test_user = create_test_user(&db).await?;
     let test_mailbox = Mailbox {
         id: Uuid::new_v4().to_string(),
-        address: "test@test.com".to_string(),
+        alias: "test".to_string(),
         public_key: TEST_PUBLIC_KEY.to_string(),
         owner_id: test_user.id,
         created_at: chrono::Utc::now().timestamp(),
@@ -148,7 +153,7 @@ async fn test_greylisting() -> Result<()> {
     // First attempt should be greylisted
     let result = service.process_incoming_email(
         email_content,
-        &test_mailbox.address,
+        &test_mailbox.get_address("test.com"),
         "sender@example.com",
         test_ip
     ).await;
@@ -162,7 +167,7 @@ async fn test_greylisting() -> Result<()> {
     // Second attempt should succeed
     let result = service.process_incoming_email(
         email_content,
-        &test_mailbox.address,
+        &test_mailbox.get_address("test.com"),
         "sender@example.com",
         test_ip
     ).await;
@@ -182,7 +187,7 @@ async fn test_cleanup() -> Result<()> {
     // Create test mailbox that expires immediately
     let test_mailbox = Mailbox {
         id: Uuid::new_v4().to_string(),
-        address: "test@test.com".to_string(),
+        alias: "test".to_string(),
         public_key: TEST_PUBLIC_KEY.to_string(),
         owner_id: test_user.id,
         created_at: chrono::Utc::now().timestamp(),
@@ -197,7 +202,7 @@ async fn test_cleanup() -> Result<()> {
     let email_content = "Test email content";
     service.process_incoming_email(
         email_content.as_bytes(),
-        &test_mailbox.address,
+        &test_mailbox.get_address("test.com"),
         "sender@example.com",
         "192.168.1.1".parse()?,
     ).await?;

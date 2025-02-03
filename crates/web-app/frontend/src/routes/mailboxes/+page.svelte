@@ -192,7 +192,7 @@
             <h2 class="card-title font-mono text-sm break-all">{mailbox.address}</h2>
             <p class="text-base-content/70">{mailbox.public_key}</p>
             <p class="text-sm text-base-content/50">
-              Created {new Date(mailbox.created_at).toLocaleDateString()}
+              Created {new Date(mailbox.created_at * 1000).toLocaleDateString()}
             </p>
             <div class="card-actions justify-end mt-4">
               <button

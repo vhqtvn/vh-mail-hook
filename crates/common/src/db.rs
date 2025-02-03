@@ -21,7 +21,7 @@ pub trait Database: Send + Sync {
     // Mailbox operations
     async fn create_mailbox(&self, mailbox: &Mailbox) -> Result<(), AppError>;
     async fn get_mailbox(&self, mailbox_id: &str) -> Result<Option<Mailbox>, AppError>;
-    async fn get_mailbox_by_address(&self, address: &str) -> Result<Option<Mailbox>, AppError>;
+    async fn get_mailbox_by_address(&self, local_part: &str) -> Result<Option<Mailbox>, AppError>;
     async fn get_mailboxes_by_owner(&self, owner_id: &str) -> Result<Vec<Mailbox>, AppError>;
     async fn delete_mailbox(&self, mailbox_id: &str) -> Result<(), AppError>;
     async fn cleanup_expired_mailboxes(&self) -> Result<(), AppError>;
@@ -201,11 +201,11 @@ impl Database for SqliteDatabase {
 
     async fn create_mailbox(&self, mailbox: &Mailbox) -> Result<(), AppError> {
         sqlx::query(
-            "INSERT INTO mailboxes (id, address, public_key, owner_id, created_at, expires_at) 
+            "INSERT INTO mailboxes (id, alias, public_key, owner_id, created_at, expires_at) 
              VALUES (?, ?, ?, ?, ?, ?)",
         )
         .bind(&mailbox.id)
-        .bind(&mailbox.address)
+        .bind(&mailbox.alias)
         .bind(&mailbox.public_key)
         .bind(&mailbox.owner_id)
         .bind(mailbox.created_at)
@@ -227,7 +227,7 @@ impl Database for SqliteDatabase {
         match mailbox {
             Some(row) => Ok(Some(Mailbox {
                 id: row.get("id"),
-                address: row.get("address"),
+                alias: row.get("alias"),
                 public_key: row.get("public_key"),
                 owner_id: row.get("owner_id"),
                 created_at: row.get("created_at"),
@@ -237,9 +237,9 @@ impl Database for SqliteDatabase {
         }
     }
 
-    async fn get_mailbox_by_address(&self, address: &str) -> Result<Option<Mailbox>, AppError> {
-        let mailbox = sqlx::query("SELECT * FROM mailboxes WHERE address = ?")
-            .bind(address)
+    async fn get_mailbox_by_address(&self, local_part: &str) -> Result<Option<Mailbox>, AppError> {
+        let mailbox = sqlx::query("SELECT * FROM mailboxes WHERE alias = ?")
+            .bind(local_part)
             .fetch_optional(&self.pool)
             .await
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -247,7 +247,7 @@ impl Database for SqliteDatabase {
         match mailbox {
             Some(row) => Ok(Some(Mailbox {
                 id: row.get("id"),
-                address: row.get("address"),
+                alias: row.get("alias"),
                 public_key: row.get("public_key"),
                 owner_id: row.get("owner_id"),
                 created_at: row.get("created_at"),
@@ -268,7 +268,7 @@ impl Database for SqliteDatabase {
             .into_iter()
             .map(|row| Mailbox {
                 id: row.get("id"),
-                address: row.get("address"),
+                alias: row.get("alias"),
                 public_key: row.get("public_key"),
                 owner_id: row.get("owner_id"),
                 created_at: row.get("created_at"),
@@ -475,8 +475,8 @@ impl<D: Database + ?Sized> Database for Arc<D> {
         (**self).get_mailbox(mailbox_id).await
     }
 
-    async fn get_mailbox_by_address(&self, address: &str) -> Result<Option<Mailbox>, AppError> {
-        (**self).get_mailbox_by_address(address).await
+    async fn get_mailbox_by_address(&self, local_part: &str) -> Result<Option<Mailbox>, AppError> {
+        (**self).get_mailbox_by_address(local_part).await
     }
 
     async fn get_mailboxes_by_owner(&self, owner_id: &str) -> Result<Vec<Mailbox>, AppError> {

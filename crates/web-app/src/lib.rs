@@ -29,10 +29,6 @@ pub struct Config {
     #[arg(long, env = "BIND_ADDR", default_value = "127.0.0.1:3000")]
     pub bind_addr: String,
 
-    /// Email domain for generated mailbox addresses (e.g. 'example.com')
-    #[arg(long, env = "EMAIL_DOMAIN", default_value = "example.com")]
-    pub email_domain: String,
-
     /// Web app URL (e.g. 'https://example.com')
     #[arg(long, env = "WEB_APP_URL", default_value = "https://example.com")]
     pub web_app_url: String,
@@ -40,7 +36,6 @@ pub struct Config {
 
 pub struct AppState<D: Database> {
     db: Arc<D>,
-    email_domain: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -85,7 +80,6 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
     
     let app = create_app(
         db,
-        config.email_domain,
         config.web_app_url,
     );
 
@@ -100,12 +94,10 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
 
 pub fn create_app<D: Database + 'static>(
     db: Arc<D>,
-    email_domain: String,
     web_app_url: String,
 ) -> Router {
     let state = Arc::new(AppState {
         db,
-        email_domain,
     });
 
     let web_app_url: Url = web_app_url.parse().unwrap();
@@ -185,8 +177,8 @@ async fn create_mailbox<D: Database>(
     });
 
     let mailbox = Mailbox {
-        id: uuid::Uuid::new_v4().to_string(),
-        address: format!("{}@{}", uuid::Uuid::new_v4(), state.email_domain),
+        id: common::generate_random_id(12),
+        alias: common::generate_random_id(12),
         public_key: req.public_key,
         owner_id: claims.sub.clone(),
         created_at: chrono::Utc::now().timestamp(),
