@@ -57,6 +57,18 @@ pub struct ConnectedAccount {
     provider_id: Option<String>,
 }
 
+// Delete account request
+#[derive(Debug, Deserialize)]
+pub struct DeleteAccountRequest {
+    pub password: Option<String>,
+}
+
+// Set password request
+#[derive(Debug, Deserialize)]
+pub struct SetPasswordRequest {
+    pub new_password: String,
+}
+
 // Create auth routes
 pub fn create_routes<D: Database + 'static>() -> Router<Arc<AppState<D>>> {
     Router::new()
@@ -72,15 +84,20 @@ pub fn create_routes<D: Database + 'static>() -> Router<Arc<AppState<D>>> {
             "/api/auth/google/callback",
             get(google_callback_handler::<D>),
         )
-        .route(
-            "/api/auth/telegram/verify",
-            post(telegram_verify_handler::<D>),
+        .nest(
+            "/api/auth",
+            Router::new()
+                .route("/telegram/verify", post(telegram_verify_handler::<D>))
+                .layer(middleware::from_fn(auth_optional)),
         )
         .nest(
             "/api/auth",
             Router::new()
                 .route("/me", get(me_handler::<D>))
                 .route("/connected-accounts", get(connected_accounts_handler::<D>))
+                .route("/delete-account", post(delete_account_handler::<D>))
+                .route("/set-password", post(set_password_handler::<D>))
+                .route("/telegram/disconnect", post(telegram_disconnect_handler::<D>))
                 .layer(middleware::from_fn(auth)),
         )
 }
@@ -172,57 +189,56 @@ async fn me_handler<D: Database>(
     Ok(Json(ApiResponse::success(user)))
 }
 
-// Auth middleware
-pub async fn auth(req: Request<Body>, next: Next) -> Response {
+fn extract_claims(req: &Request<Body>) -> Result<Option<Claims>, AppError> {
     let auth_header = req
         .headers()
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok());
-
-    let auth_header = match auth_header {
-        Some(header) => header,
-        None => {
-            return (StatusCode::UNAUTHORIZED, "Please log in to access this resource.").into_response();
-        }
-    };
-
-    if !auth_header.starts_with("Bearer ") {
-        return (
-            StatusCode::UNAUTHORIZED,
-            "Invalid authentication format. Please log in again.",
-        )
-            .into_response();
-    }
-
-    let token = auth_header.trim_start_matches("Bearer ");
-    let jwt_secret = match std::env::var("JWT_SECRET") {
-        Ok(secret) => secret,
-        Err(_) => {
-            return (StatusCode::INTERNAL_SERVER_ERROR, "Authentication service is not properly configured. Please contact support.").into_response();
-        }
-    };
-
-    let claims = match decode::<Claims>(
-        token,
-        &DecodingKey::from_secret(jwt_secret.as_bytes()),
-        &Validation::default(),
-    ) {
-        Ok(token_data) => token_data.claims,
-        Err(e) => {
-            let message = if e.to_string().contains("expired") {
-                "Your session has expired. Please log in again to continue."
+    
+    match auth_header {
+        Some(header) => {
+            if let Some(token) = header.strip_prefix("Bearer ") {
+                let claims = decode::<Claims>(
+                    token,
+                    &DecodingKey::from_secret(get_jwt_secret().as_bytes()),
+                    &Validation::default(),
+                ).map_err(|_| AppError::Auth(format!("Invalid token")))?;
+                Ok(Some(claims.claims))
             } else {
-                "Invalid authentication token. Please log in again."
-            };
-            return (StatusCode::UNAUTHORIZED, message).into_response();
+                Err(AppError::Auth("Invalid authorization header format".to_string()))
+            }
         }
-    };
+        None => Ok(None),
+    }
+}
 
-    // Add user_id to request extensions
-    let mut req = req;
-    req.extensions_mut().insert(claims);
+pub async fn auth_optional(req: Request<Body>, next: Next) -> Response {
+    match extract_claims(&req) {
+        Ok(Some(claims)) => {
+            let mut req = req;
+            req.extensions_mut().insert(claims);
+            next.run(req).await
+        }
+        Ok(None) => next.run(req).await,
+        Err(e) => {
+            error!("Failed to extract claims: {}", e);
+            (StatusCode::UNAUTHORIZED, "Unauthorized").into_response()
+        }
+    }
+}
 
-    next.run(req).await
+// Auth middleware
+pub async fn auth(req: Request<Body>, next: Next) -> Response {
+    match extract_claims(&req) {
+        Ok(Some(claims)) => {
+            let mut req = req;
+            req.extensions_mut().insert(claims);
+            next.run(req).await
+        }
+        _ => {
+            (StatusCode::UNAUTHORIZED, "Unauthorized").into_response()
+        }
+    }
 }
 
 // Helper functions
@@ -366,4 +382,70 @@ async fn connected_accounts_handler<D: Database>(
     }
 
     Ok(Json(ApiResponse::success(accounts)))
+}
+
+// Set password handler
+async fn set_password_handler<D: Database>(
+    State(state): State<Arc<AppState<D>>>,
+    claims: axum::extract::Extension<Claims>,
+    Json(req): Json<SetPasswordRequest>,
+) -> Result<Json<ApiResponse<()>>, AppError> {
+    let credentials = get_credentials(&state.db, &claims.sub).await?;
+    
+    if credentials.password_hash.is_some() {
+        return Err(AppError::Auth("Password is already set. Use change password instead.".to_string()));
+    }
+
+    let password_hash = password::hash_password(&req.new_password)?;
+    
+    sqlx::query(
+        "UPDATE user_credentials SET password_hash = ?, updated_at = ? WHERE user_id = ?",
+    )
+    .bind(&password_hash)
+    .bind(chrono::Utc::now().timestamp())
+    .bind(&claims.sub)
+    .execute(state.db.pool())
+    .await
+    .map_err(|e| {
+        tracing::error!("Database error while setting password: {}", e);
+        AppError::Internal("Failed to set password. Please try again later.".to_string())
+    })?;
+
+    Ok(Json(ApiResponse::success(())))
+}
+
+// Delete account handler
+async fn delete_account_handler<D: Database>(
+    State(state): State<Arc<AppState<D>>>,
+    claims: axum::extract::Extension<Claims>,
+    Json(req): Json<DeleteAccountRequest>,
+) -> Result<Json<ApiResponse<()>>, AppError> {
+    // Get user credentials to verify password if provided
+    let credentials = get_credentials(&state.db, &claims.sub).await
+        .map_err(|e| {
+            tracing::error!("Database error while fetching credentials: {}", e);
+            AppError::Auth("Unable to verify credentials. Please try again later.".to_string())
+        })?;
+
+    // If user has password auth and password was provided, verify it
+    if let (Some(ref password_hash), Some(ref password)) = (&credentials.password_hash, &req.password) {
+        if !password::verify_password(password, password_hash)? {
+            return Err(AppError::Auth("Incorrect password. Please try again.".to_string()));
+        }
+    } else if credentials.password_hash.is_some() && req.password.is_none() {
+        // If user has password but didn't provide one
+        return Err(AppError::Auth("Password is required to delete account.".to_string()));
+    }
+
+    // Delete the user - this will cascade to all related tables
+    sqlx::query("DELETE FROM users WHERE id = ?")
+        .bind(&claims.sub)
+        .execute(state.db.pool())
+        .await
+        .map_err(|e| {
+            tracing::error!("Database error while deleting user: {}", e);
+            AppError::Internal("Failed to delete account. Please try again later.".to_string())
+        })?;
+
+    Ok(Json(ApiResponse::success(())))
 }

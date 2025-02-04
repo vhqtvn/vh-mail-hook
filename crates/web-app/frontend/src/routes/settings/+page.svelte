@@ -2,13 +2,16 @@
   import { onMount } from 'svelte';
   import { get, post } from '$lib/api';
   import ErrorAlert from '$lib/components/ErrorAlert.svelte';
+  import TelegramLoginWidget from '$lib/components/TelegramLoginWidget.svelte';
 
   let currentPassword = '';
   let newPassword = '';
   let confirmNewPassword = '';
+  let deleteAccountPassword = '';
   let loading = false;
   let error: unknown | null = null;
   let success = '';
+  let hasPassword = false;
 
   interface ConnectedAccount {
     provider: string;
@@ -22,12 +25,39 @@
     try {
       const response = await get<ConnectedAccount[]>('/api/auth/connected-accounts');
       connectedAccounts = response.data || [];
+      hasPassword = connectedAccounts.some(acc => acc.provider === 'password');
     } catch (e) {
       error = e;
     } finally {
       loadingAccounts = false;
     }
   });
+
+  async function setPassword() {
+    if (newPassword !== confirmNewPassword) {
+      error = new Error('Passwords do not match');
+      return;
+    }
+
+    loading = true;
+    error = null;
+    success = '';
+
+    try {
+      await post('/api/auth/set-password', {
+        new_password: newPassword,
+      });
+
+      success = 'Password set successfully';
+      newPassword = '';
+      confirmNewPassword = '';
+      hasPassword = true;
+    } catch (e) {
+      error = e;
+    } finally {
+      loading = false;
+    }
+  }
 
   async function changePassword() {
     if (newPassword !== confirmNewPassword) {
@@ -64,11 +94,36 @@
     error = null;
     success = '';
     try {
-      await post(`/api/auth/${provider}/disconnect`, {});
+      const endpoint = provider === 'telegram' ? '/api/auth/telegram/disconnect' : `/api/auth/${provider}/disconnect`;
+      await post(endpoint, {});
       connectedAccounts = connectedAccounts.filter(acc => acc.provider !== provider);
       success = `${provider} account disconnected successfully`;
     } catch (e) {
       error = e;
+    }
+  }
+
+  async function handleDeleteAccount() {
+    if (hasPassword && !deleteAccountPassword) {
+      error = new Error('Please enter your password to confirm account deletion');
+      return;
+    }
+    if (!window.confirm('Are you absolutely sure you want to delete your account? This action cannot be undone.')) {
+      return;
+    }
+    
+    loading = true;
+    error = null;
+    try {
+      await post('/api/auth/delete-account', hasPassword ? {
+        password: deleteAccountPassword
+      } : {});
+      // Redirect to home and clear session
+      window.localStorage.removeItem('token');
+      window.location.href = '/';
+    } catch (e) {
+      error = e;
+      loading = false;
     }
   }
 </script>
@@ -86,25 +141,32 @@
 
   <div class="card bg-base-200 mb-8">
     <div class="card-body">
-      <h2 class="card-title">Change Password</h2>
-      <form on:submit|preventDefault={changePassword} class="space-y-4">
-        <div class="form-control">
-          <label class="label" for="current-password">
-            <span class="label-text">Current Password</span>
-          </label>
-          <input
-            type="password"
-            id="current-password"
-            bind:value={currentPassword}
-            class="input input-bordered w-full"
-            required
-            autocomplete="current-password"
-          />
-        </div>
+      <h2 class="card-title">{hasPassword ? 'Change Password' : 'Set Password'}</h2>
+      {#if !hasPassword}
+        <p class="text-sm mb-4">
+          Setting a password allows you to log in with your username and password, and is required for some account operations.
+        </p>
+      {/if}
+      <form on:submit|preventDefault={hasPassword ? changePassword : setPassword} class="space-y-4">
+        {#if hasPassword}
+          <div class="form-control">
+            <label class="label" for="current-password">
+              <span class="label-text">Current Password</span>
+            </label>
+            <input
+              type="password"
+              id="current-password"
+              bind:value={currentPassword}
+              class="input input-bordered w-full"
+              required
+              autocomplete="current-password"
+            />
+          </div>
+        {/if}
 
         <div class="form-control">
           <label class="label" for="new-password">
-            <span class="label-text">New Password</span>
+            <span class="label-text">{hasPassword ? 'New Password' : 'Password'}</span>
           </label>
           <input
             type="password"
@@ -119,7 +181,7 @@
 
         <div class="form-control">
           <label class="label" for="confirm-new-password">
-            <span class="label-text">Confirm New Password</span>
+            <span class="label-text">Confirm {hasPassword ? 'New ' : ''}Password</span>
           </label>
           <input
             type="password"
@@ -136,7 +198,7 @@
           {#if loading}
             <span class="loading loading-spinner"></span>
           {/if}
-          Change Password
+          {hasPassword ? 'Change Password' : 'Set Password'}
         </button>
       </form>
     </div>
@@ -154,12 +216,15 @@
         <div class="space-y-4">
           <!-- Telegram -->
           {#if connectedAccounts.find(acc => acc.provider === 'telegram')}
-            <div class="flex items-center justify-between">
+            <div class="flex items-center justify-between p-4 bg-base-300 rounded-lg">
               <div class="flex items-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 496 512">
                   <path fill="currentColor" d="M248 8C111 8 0 119 0 256s111 248 248 248 248-111 248-248S385 8 248 8zm121.8 169.9l-40.7 191.8c-3 13.6-11.1 16.9-22.4 10.5l-62-45.7-29.9 28.8c-3.3 3.3-6.1 6.1-12.5 6.1l4.4-63.1 114.9-103.8c5-4.4-1.1-6.9-7.7-2.5l-142 89.4-61.2-19.1c-13.3-4.2-13.6-13.3 2.8-19.7l239.1-92.2c11.1-4 20.8 2.7 17.2 19.5z"/>
                 </svg>
-                <span>Telegram</span>
+                <div>
+                  <span class="font-medium">Telegram</span>
+                  <div class="text-sm opacity-70">Connected</div>
+                </div>
               </div>
               <button
                 class="btn btn-sm btn-error"
@@ -169,12 +234,22 @@
               </button>
             </div>
           {:else}
-            <a href="/api/auth/telegram" class="btn btn-outline w-full">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 496 512">
-                <path fill="currentColor" d="M248 8C111 8 0 119 0 256s111 248 248 248 248-111 248-248S385 8 248 8zm121.8 169.9l-40.7 191.8c-3 13.6-11.1 16.9-22.4 10.5l-62-45.7-29.9 28.8c-3.3 3.3-6.1 6.1-12.5 6.1l4.4-63.1 114.9-103.8c5-4.4-1.1-6.9-7.7-2.5l-142 89.4-61.2-19.1c-13.3-4.2-13.6-13.3 2.8-19.7l239.1-92.2c11.1-4 20.8 2.7 17.2 19.5z"/>
-              </svg>
-              Connect Telegram
-            </a>
+            <div class="flex flex-col items-center gap-4 p-4 bg-base-300 rounded-lg">
+              <div class="text-center">
+                <h3 class="font-medium mb-2">Connect Telegram</h3>
+                <p class="text-sm opacity-70 mb-4">Link your Telegram account to enable notifications and quick access.</p>
+              </div>
+              {#if import.meta.env.VITE_TELEGRAM_BOT_NAME}
+                <TelegramLoginWidget 
+                  botName={import.meta.env.VITE_TELEGRAM_BOT_NAME} 
+                  action="connect"
+                />
+              {:else}
+                <div class="text-error text-sm text-center">
+                  Telegram login is not configured (VITE_TELEGRAM_BOT_NAME not set)
+                </div>
+              {/if}
+              </div>
           {/if}
 
           <!-- Google -->
@@ -203,6 +278,39 @@
           {/if}
         </div>
       {/if}
+    </div>
+  </div>
+
+  <div class="card bg-base-200 mt-8">
+    <div class="card-body">
+      <h2 class="card-title text-error">Delete Account</h2>
+      <p class="text-sm text-error mb-4">
+        Warning: This action is permanent and cannot be undone. All your data, including mailboxes and emails, will be permanently deleted.
+      </p>
+      <form on:submit|preventDefault={handleDeleteAccount} class="space-y-4">
+        {#if hasPassword}
+          <div class="form-control">
+            <label class="label" for="delete-account-password">
+              <span class="label-text">Enter your password to confirm</span>
+            </label>
+            <input
+              type="password"
+              id="delete-account-password"
+              bind:value={deleteAccountPassword}
+              class="input input-bordered w-full"
+              required
+              autocomplete="current-password"
+            />
+          </div>
+        {/if}
+
+        <button type="submit" class="btn btn-error w-full" disabled={loading}>
+          {#if loading}
+            <span class="loading loading-spinner"></span>
+          {/if}
+          Delete Account
+        </button>
+      </form>
     </div>
   </div>
 </div> 

@@ -101,10 +101,10 @@
 
   <div class="space-y-4">
     {#if import.meta.env.VITE_TELEGRAM_BOT_NAME}
-      <TelegramLoginWidget botName={import.meta.env.VITE_TELEGRAM_BOT_NAME} />
-      <div class="text-xs text-center text-base-content/50">
-        Using Telegram bot: {import.meta.env.VITE_TELEGRAM_BOT_NAME}
-      </div>
+      <TelegramLoginWidget 
+        botName={import.meta.env.VITE_TELEGRAM_BOT_NAME} 
+        action="register"
+      />
     {:else}
       <div class="text-error text-sm text-center">
         Telegram login is not configured (VITE_TELEGRAM_BOT_NAME not set)

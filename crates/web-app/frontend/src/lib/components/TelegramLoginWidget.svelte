@@ -9,6 +9,7 @@
   export let showUserPic = true;
   export let cornerRadius = 20;
   export let requestAccess = 'write';
+  export let action: 'login' | 'register' | 'connect' = 'login';
 
   let widgetContainer: HTMLDivElement;
   let error: string | null = null;
@@ -22,15 +23,24 @@
       try {
         console.log('Sending request to server:', {
           url: '/api/auth/telegram/verify',
-          data: user
+          data: { ...user, action }
         });
 
-        const response = await post('/api/auth/telegram/verify', user, { requireAuth: false });
+        const response = await post('/api/auth/telegram/verify', 
+          { ...user, action }, 
+          { requireAuth: action === 'connect' }
+        );
         console.log('Server response:', response);
         
         if (response.success && response.data) {
-          console.log('Login successful, redirecting...');
-          await auth.login(response.data.token, response.data.user);
+          console.log('Authentication successful, redirecting...');
+          if (action === 'register') {
+            await auth.register(response.data.token, response.data.user);
+          } else if (action === 'login') {
+            await auth.login(response.data.token, response.data.user);
+          }
+          // For connect action, we don't need to do anything special
+          // as the server will handle the connection
         } else {
           error = response.error || 'Authentication failed';
           console.error('Auth failed:', response.error);
@@ -66,15 +76,15 @@
   });
 </script>
 
-<div class="flex flex-col items-center gap-2">
-  <div bind:this={widgetContainer}></div>
+<div class="flex flex-col items-center gap-2 w-full flex-center">
+  <div class="telegram-login-widget" bind:this={widgetContainer}></div>
   {#if error}
     <p class="text-error text-sm">{error}</p>
   {/if}
 </div>
 
 <style>
-  div {
-    display: inline-block;
+  .telegram-login-widget :global(iframe) {
+    opacity: 1;
   }
 </style> 
