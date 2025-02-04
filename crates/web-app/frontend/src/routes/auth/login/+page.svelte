@@ -3,6 +3,7 @@
   import ErrorAlert from '$lib/components/ErrorAlert.svelte';
   import { auth } from '$lib/stores/auth';
   import { goto, invalidateAll } from '$app/navigation';
+  import TelegramLoginWidget from '$lib/components/TelegramLoginWidget.svelte';
 
   let username = '';
   let password = '';
@@ -77,12 +78,16 @@
   <div class="divider">OR</div>
 
   <div class="space-y-4">
-    <a href="/api/auth/telegram" class="btn w-full">
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 496 512">
-        <path fill="currentColor" d="M248 8C111 8 0 119 0 256s111 248 248 248 248-111 248-248S385 8 248 8zm121.8 169.9l-40.7 191.8c-3 13.6-11.1 16.9-22.4 10.5l-62-45.7-29.9 28.8c-3.3 3.3-6.1 6.1-12.5 6.1l4.4-63.1 114.9-103.8c5-4.4-1.1-6.9-7.7-2.5l-142 89.4-61.2-19.1c-13.3-4.2-13.6-13.3 2.8-19.7l239.1-92.2c11.1-4 20.8 2.7 17.2 19.5z"/>
-      </svg>
-      Continue with Telegram
-    </a>
+    {#if import.meta.env.VITE_TELEGRAM_BOT_NAME}
+      <TelegramLoginWidget botName={import.meta.env.VITE_TELEGRAM_BOT_NAME} />
+      <div class="text-xs text-center text-base-content/50">
+        Using Telegram bot: {import.meta.env.VITE_TELEGRAM_BOT_NAME}
+      </div>
+    {:else}
+      <div class="text-error text-sm text-center">
+        Telegram login is not configured (VITE_TELEGRAM_BOT_NAME not set)
+      </div>
+    {/if}
 
     <a href="/api/auth/oauth/google" class="btn w-full">
       <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 488 512">

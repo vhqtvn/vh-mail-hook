@@ -31,6 +31,7 @@ sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite", "chrono"] }
 rust-embed = "6.8"
 mime_guess = "2.0"
 dotenv = { workspace = true }
+hex = "0.4"
 
 [dev-dependencies]
 tower = { version = "0.4", features = ["util"] }

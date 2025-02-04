@@ -12,6 +12,7 @@ use common::{db::Database, AppError, AuthType, User};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tracing::error;
 
 mod oauth;
 mod password;
@@ -49,6 +50,13 @@ pub struct AuthResponse {
     pub user: User,
 }
 
+#[derive(Debug, Serialize)]
+pub struct ConnectedAccount {
+    provider: String,
+    connected_at: i64,
+    provider_id: Option<String>,
+}
+
 // Create auth routes
 pub fn create_routes<D: Database + 'static>() -> Router<Arc<AppState<D>>> {
     Router::new()
@@ -69,9 +77,10 @@ pub fn create_routes<D: Database + 'static>() -> Router<Arc<AppState<D>>> {
             post(telegram_verify_handler::<D>),
         )
         .nest(
-            "/api/auth/me",
+            "/api/auth",
             Router::new()
-                .route("/", get(me_handler::<D>))
+                .route("/me", get(me_handler::<D>))
+                .route("/connected-accounts", get(connected_accounts_handler::<D>))
                 .layer(middleware::from_fn(auth)),
         )
 }
@@ -309,4 +318,52 @@ fn create_token(user_id: &str) -> Result<String, AppError> {
 
 fn get_jwt_secret() -> String {
     std::env::var("JWT_SECRET").unwrap_or_else(|_| "your-256-bit-secret".to_string())
+}
+
+// Connected accounts handler
+async fn connected_accounts_handler<D: Database>(
+    State(state): State<Arc<AppState<D>>>,
+    claims: axum::extract::Extension<Claims>,
+) -> Result<Json<ApiResponse<Vec<ConnectedAccount>>>, AppError> {
+    let credentials = sqlx::query_as::<_, UserCredentials>(
+        "SELECT * FROM user_credentials WHERE user_id = ?"
+    )
+    .bind(&claims.sub)
+    .fetch_one(state.db.pool())
+    .await
+    .map_err(|e| {
+        error!("Database error while fetching credentials: {}", e);
+        AppError::Internal("Unable to fetch account information".to_string())
+    })?;
+
+    let mut accounts = Vec::new();
+
+    // Add password if set
+    if credentials.password_hash.is_some() {
+        accounts.push(ConnectedAccount {
+            provider: "password".to_string(),
+            connected_at: credentials.created_at,
+            provider_id: None,
+        });
+    }
+
+    // Add OAuth provider if present
+    if let Some(provider) = credentials.oauth_provider {
+        accounts.push(ConnectedAccount {
+            provider,
+            connected_at: credentials.created_at,
+            provider_id: credentials.oauth_id,
+        });
+    }
+
+    // Add Telegram if present
+    if let Some(telegram_id) = credentials.telegram_id {
+        accounts.push(ConnectedAccount {
+            provider: "telegram".to_string(),
+            connected_at: credentials.created_at,
+            provider_id: Some(telegram_id),
+        });
+    }
+
+    Ok(Json(ApiResponse::success(accounts)))
 }

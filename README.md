@@ -109,6 +109,30 @@ APP_URL=http://localhost:3000
    </script>
    ```
 
+### Setting Up Telegram Authentication
+
+1. Create a new bot using [@BotFather](https://t.me/botfather) on Telegram:
+   - Send `/newbot` to @BotFather
+   - Choose a name for your bot (e.g. "VH Mail Hook")
+   - Choose a username for your bot (e.g. "vh_mail_hook_bot")
+   - Save the bot token provided by @BotFather
+
+2. Configure the bot for website authentication:
+   - Send `/setdomain` to @BotFather
+   - Select your bot
+   - Enter your website domain (e.g. `example.com`)
+
+3. Set the required environment variables:
+   ```bash
+   # Telegram Bot Configuration
+   TELEGRAM_BOT_TOKEN=your_bot_token_from_botfather
+   ```
+
+4. Update the frontend environment file at `crates/web-app/frontend/.env`:
+   ```bash
+   VITE_TELEGRAM_BOT_NAME=your_bot_username
+   ```
+
 ### API Endpoints
 
 - `POST /auth/register` - Register with username/password
