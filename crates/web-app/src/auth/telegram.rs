@@ -140,31 +140,15 @@ pub async fn telegram_verify_handler<D: Database>(
                 AppError::Auth("Your Telegram account must have a username to create an account.".to_string())
             })?;
 
-            // Try to create user with incremental usernames until we succeed
-            let mut counter = 0;
-            let user = loop {
-                let username = if counter == 0 {
-                    base_username.to_string()
-                } else {
-                    format!("{}_{}", base_username, counter)
-                };
+            // Use common function to generate unique username
+            let username = crate::auth::generate_unique_username(&state.db, base_username, AuthType::Telegram).await?;
 
-                match state.db.create_user(&username, AuthType::Telegram).await {
-                    Ok(user) => break user,
-                    Err(e) => {
-                        if e.to_string().contains("UNIQUE constraint failed") || e.to_string().contains("Duplicate entry") {
-                            counter += 1;
-                            if counter > 100 {
-                                error!("Failed to generate unique username after 100 attempts");
-                                return Err(AppError::Internal("Unable to create account. Please try again later.".to_string()));
-                            }
-                            continue;
-                        }
-                        error!("Database error during user creation: {}", e);
-                        return Err(AppError::Internal("Unable to create account. Please try again later.".to_string()));
-                    }
-                }
-            };
+            // Create new user
+            let user = state.db.create_user(&username, AuthType::Telegram).await
+                .map_err(|e| {
+                    error!("Database error during user creation: {}", e);
+                    AppError::Internal("Unable to create account. Please try again later.".to_string())
+                })?;
 
             // Store Telegram credentials
             store_credentials(

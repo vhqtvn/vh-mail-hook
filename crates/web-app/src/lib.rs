@@ -11,6 +11,7 @@ use tracing::{info, error};
 use clap::Parser;
 use tokio::net::TcpListener;
 use rust_embed::RustEmbed;
+use std::sync::OnceLock;
 
 mod auth;
 use auth::Claims;
@@ -19,7 +20,7 @@ use auth::Claims;
 #[folder = "static"]
 struct StaticAssets;
 
-#[derive(Parser)]
+#[derive(Parser, Debug, Clone)]
 pub struct Config {
     /// SQLite database path (e.g. 'data.db' or ':memory:' for in-memory database)
     #[arg(long, env = "DATABASE_PATH", default_value = "data.db")]
@@ -32,6 +33,37 @@ pub struct Config {
     /// Web app URL (e.g. 'https://example.com')
     #[arg(long, env = "WEB_APP_URL", default_value = "https://example.com")]
     pub web_app_url: String,
+}
+
+static CONFIG: OnceLock<Config> = OnceLock::new();
+
+#[cfg(not(test))]
+pub fn init_config(config: Config) {
+    CONFIG.set(config).expect("Config already initialized");
+}
+
+#[cfg(test)]
+pub fn init_config(config: Config) {
+    // In test mode, we want to allow reinitialization
+    // First try to get the existing config
+    if let Some(existing) = CONFIG.get() {
+        // If the configs are the same, just return
+        if existing.database_path == config.database_path 
+            && existing.bind_addr == config.bind_addr 
+            && existing.web_app_url == config.web_app_url {
+            return;
+        }
+    }
+    // If we get here, either there was no config or it was different
+    // We can't unset a OnceLock, so we'll just ignore the result
+    let _ = CONFIG.set(config);
+}
+
+pub fn get_web_app_url() -> String {
+    CONFIG.get()
+        .expect("Config not initialized")
+        .web_app_url
+        .clone()
 }
 
 pub struct AppState<D: Database> {
@@ -82,13 +114,12 @@ pub struct UpdateMailboxRequest {
 }
 
 pub async fn run(config: Config) -> anyhow::Result<()> {
+    init_config(config.clone());
+
     let db = common::db::SqliteDatabase::new(&format!("sqlite:{}", config.database_path)).await?;
     let db = Arc::new(db);
     
-    let app = create_app(
-        db,
-        config.web_app_url,
-    );
+    let app = create_app(db);
 
     let addr: SocketAddr = config.bind_addr.parse()?;
     info!("Starting web server on {}", addr);
@@ -101,13 +132,12 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
 
 pub fn create_app<D: Database + 'static>(
     db: Arc<D>,
-    web_app_url: String,
 ) -> Router {
     let state = Arc::new(AppState {
         db,
     });
 
-    let web_app_url: Url = web_app_url.parse().unwrap();
+    let web_app_url: Url = get_web_app_url().parse().unwrap();
 
     let cors = CorsLayer::new()
         .allow_origin(AllowOrigin::exact(HeaderValue::from_str(&web_app_url.origin().ascii_serialization()).unwrap()))

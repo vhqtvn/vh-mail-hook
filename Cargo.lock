@@ -4904,6 +4904,7 @@ dependencies = [
  "mail-service",
  "mime_guess",
  "oauth2",
+ "once_cell",
  "rand 0.8.5",
  "reqwest",
  "rust-embed",
@@ -4916,6 +4917,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "urlencoding",
  "uuid",
 ]
 

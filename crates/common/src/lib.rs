@@ -179,6 +179,7 @@ pub enum AuthType {
     Password,
     GitHub,
     Telegram,
+    Google,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

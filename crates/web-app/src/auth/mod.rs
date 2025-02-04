@@ -98,6 +98,7 @@ pub fn create_routes<D: Database + 'static>() -> Router<Arc<AppState<D>>> {
                 .route("/delete-account", post(delete_account_handler::<D>))
                 .route("/set-password", post(set_password_handler::<D>))
                 .route("/telegram/disconnect", post(telegram_disconnect_handler::<D>))
+                .route("/google/disconnect", post(google_disconnect_handler::<D>))
                 .layer(middleware::from_fn(auth)),
         )
 }
@@ -448,4 +449,47 @@ async fn delete_account_handler<D: Database>(
         })?;
 
     Ok(Json(ApiResponse::success(())))
+}
+
+// Helper function to generate a unique username
+pub(crate) async fn generate_unique_username<D: Database>(
+    db: &D,
+    base_username: &str,
+    auth_type: AuthType,
+) -> Result<String, AppError> {
+    let mut counter = 0;
+    loop {
+        let username = if counter == 0 {
+            base_username.to_string()
+        } else {
+            format!("{}_{}", base_username, counter)
+        };
+
+        match db.create_user(&username, auth_type.clone()).await {
+            Ok(user) => {
+                // Delete the temporary user since we only wanted to check username availability
+                sqlx::query("DELETE FROM users WHERE id = ?")
+                    .bind(&user.id)
+                    .execute(db.pool())
+                    .await
+                    .map_err(|e| {
+                        tracing::error!("Database error while cleaning up temporary user: {}", e);
+                        AppError::Internal("Error during username generation".to_string())
+                    })?;
+                return Ok(username);
+            }
+            Err(e) => {
+                if e.to_string().contains("UNIQUE constraint failed") || e.to_string().contains("Duplicate entry") {
+                    counter += 1;
+                    if counter > 100 {
+                        tracing::error!("Failed to generate unique username after 100 attempts");
+                        return Err(AppError::Internal("Unable to generate unique username. Please try again later.".to_string()));
+                    }
+                    continue;
+                }
+                tracing::error!("Database error during username check: {}", e);
+                return Err(AppError::Internal("Unable to generate unique username. Please try again later.".to_string()));
+            }
+        }
+    }
 }

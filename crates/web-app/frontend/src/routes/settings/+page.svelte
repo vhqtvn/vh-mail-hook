@@ -3,6 +3,9 @@
   import { get, post } from '$lib/api';
   import ErrorAlert from '$lib/components/ErrorAlert.svelte';
   import TelegramLoginWidget from '$lib/components/TelegramLoginWidget.svelte';
+  import GoogleLoginButton from '$lib/components/GoogleLoginButton.svelte';
+  import { fade } from 'svelte/transition';
+  import { elasticOut } from 'svelte/easing';
 
   let currentPassword = '';
   let newPassword = '';
@@ -12,6 +15,8 @@
   let error: unknown | null = null;
   let success = '';
   let hasPassword = false;
+  let errorElement: HTMLElement;
+  let shakeKey = 0;
 
   interface ConnectedAccount {
     provider: string;
@@ -38,6 +43,11 @@
   async function handleTelegramConnect() {
     await fetchConnectedAccounts();
     success = 'Telegram account connected successfully';
+  }
+
+  async function handleGoogleConnect() {
+    await fetchConnectedAccounts();
+    success = 'Google account connected successfully';
   }
 
   async function setPassword() {
@@ -102,8 +112,8 @@
     success = '';
     try {
       const endpoint = provider === 'telegram' ? '/api/auth/telegram/disconnect' : `/api/auth/${provider}/disconnect`;
-      await post(endpoint, {});
-      connectedAccounts = connectedAccounts.filter(acc => acc.provider !== provider);
+      await post(endpoint, {}, { requireAuth: true });
+      await fetchConnectedAccounts();
       success = `${provider} account disconnected successfully`;
     } catch (e) {
       error = e;
@@ -133,18 +143,58 @@
       loading = false;
     }
   }
+
+  function scrollIntoView(node: HTMLElement) {
+    errorElement = node;
+    setTimeout(() => {
+      node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Force animation restart
+      node.classList.remove('shake-animation');
+      void node.offsetWidth; // Trigger reflow
+      node.classList.add('shake-animation');
+    }, 100);
+    return {
+      destroy() {}
+    };
+  }
+
+  $: if (error) {
+    shakeKey++; // Force animation restart when error changes
+  }
 </script>
+
+<style>
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+    20%, 40%, 60%, 80% { transform: translateX(4px); }
+  }
+
+  .error-container {
+    margin-bottom: 1rem;
+  }
+
+  .shake-animation {
+    animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+  }
+</style>
 
 <div class="container mx-auto px-4 py-8 max-w-2xl">
   <h1 class="text-3xl font-bold mb-8">Account Settings</h1>
 
+  {#if error}
+    <div 
+      class="error-container shake-animation"
+      use:scrollIntoView
+    >
+      <ErrorAlert {error} />
+    </div>
+  {/if}
   {#if success}
     <div class="alert alert-success mb-4">
       <span>{success}</span>
     </div>
   {/if}
-
-  <ErrorAlert {error} className="mb-4" />
 
   <div class="card bg-base-200 mb-8">
     <div class="card-body">
@@ -251,24 +301,26 @@
                   botName={import.meta.env.VITE_TELEGRAM_BOT_NAME} 
                   action="connect"
                   onSuccess={handleTelegramConnect}
-                  onError={(err) => error = new Error(err)}
                 />
               {:else}
                 <div class="text-error text-sm text-center">
                   Telegram login is not configured (VITE_TELEGRAM_BOT_NAME not set)
                 </div>
               {/if}
-              </div>
+            </div>
           {/if}
 
           <!-- Google -->
           {#if connectedAccounts.find(acc => acc.provider === 'google')}
-            <div class="flex items-center justify-between">
+            <div class="flex items-center justify-between p-4 bg-base-300 rounded-lg">
               <div class="flex items-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 488 512">
                   <path fill="currentColor" d="M488 261.8C488 403.3 391.1 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 123 24.5 166.3 64.9l-67.5 64.9C258.5 52.6 94.3 116.6 94.3 256c0 86.5 69.1 156.6 153.7 156.6 98.2 0 135-70.4 140.8-106.9H248v-85.3h236.1c2.3 12.7 3.9 24.9 3.9 41.4z"/>
                 </svg>
-                <span>Google</span>
+                <div>
+                  <span class="font-medium">Google</span>
+                  <div class="text-sm opacity-70">Connected</div>
+                </div>
               </div>
               <button
                 class="btn btn-sm btn-error"
@@ -278,12 +330,9 @@
               </button>
             </div>
           {:else}
-            <a href="/api/auth/oauth/google" class="btn btn-outline w-full">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 488 512">
-                <path fill="currentColor" d="M488 261.8C488 403.3 391.1 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 123 24.5 166.3 64.9l-67.5 64.9C258.5 52.6 94.3 116.6 94.3 256c0 86.5 69.1 156.6 153.7 156.6 98.2 0 135-70.4 140.8-106.9H248v-85.3h236.1c2.3 12.7 3.9 24.9 3.9 41.4z"/>
-              </svg>
-              Connect Google
-            </a>
+            <div class="flex flex-col items-center gap-4 p-4 bg-base-300 rounded-lg">
+              <GoogleLoginButton action="connect" onSuccess={handleGoogleConnect} />
+            </div>
           {/if}
         </div>
       {/if}
@@ -293,33 +342,34 @@
   <div class="card bg-base-200 mt-8">
     <div class="card-body">
       <h2 class="card-title text-error">Delete Account</h2>
-      <p class="text-sm text-error mb-4">
-        Warning: This action is permanent and cannot be undone. All your data, including mailboxes and emails, will be permanently deleted.
+      <p class="text-sm mb-4">
+        This action cannot be undone. All your data will be permanently deleted.
       </p>
-      <form on:submit|preventDefault={handleDeleteAccount} class="space-y-4">
-        {#if hasPassword}
-          <div class="form-control">
-            <label class="label" for="delete-account-password">
-              <span class="label-text">Enter your password to confirm</span>
-            </label>
-            <input
-              type="password"
-              id="delete-account-password"
-              bind:value={deleteAccountPassword}
-              class="input input-bordered w-full"
-              required
-              autocomplete="current-password"
-            />
-          </div>
+      {#if hasPassword}
+        <div class="form-control mb-4">
+          <label class="label" for="delete-account-password">
+            <span class="label-text">Enter your password to confirm</span>
+          </label>
+          <input
+            type="password"
+            id="delete-account-password"
+            bind:value={deleteAccountPassword}
+            class="input input-bordered w-full"
+            required
+            autocomplete="current-password"
+          />
+        </div>
+      {/if}
+      <button
+        class="btn btn-error w-full"
+        on:click={handleDeleteAccount}
+        disabled={loading}
+      >
+        {#if loading}
+          <span class="loading loading-spinner"></span>
         {/if}
-
-        <button type="submit" class="btn btn-error w-full" disabled={loading}>
-          {#if loading}
-            <span class="loading loading-spinner"></span>
-          {/if}
-          Delete Account
-        </button>
-      </form>
+        Delete Account
+      </button>
     </div>
   </div>
 </div> 

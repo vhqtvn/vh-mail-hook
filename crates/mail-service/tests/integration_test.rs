@@ -210,8 +210,8 @@ async fn test_cleanup() -> Result<()> {
         "192.168.1.1".parse()?,
     ).await?;
     
-    // Wait 2 seconds to ensure expiration (1 second expiry + 1 second buffer)
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    // Wait 3 seconds to ensure expiration (1 second expiry + 2 second buffer)
+    tokio::time::sleep(Duration::from_secs(3)).await;
     
     // Run cleanup
     service.cleanup_expired().await?;

@@ -8,15 +8,28 @@ use common::{db::Database, db::SqliteDatabase, Mailbox, User, Email};
 use serde_json::json;
 use std::{sync::Arc, env, path::PathBuf};
 use tower::Service;
-use web_app::{create_app, ApiResponse};
+use web_app::{create_app, ApiResponse, Config, init_config};
 use http_body_util::BodyExt;
 use tracing::{info, error};
+use once_cell::sync::OnceCell;
 
 const TEST_PUBLIC_KEY: &str = "age1creym8a9ncefdvplrqrfy7wf8k3fw2l7w5z7nwp03jgfyhc56gcqgq27cg";
 #[allow(dead_code)]
 const TEST_SECRET_KEY: &str = "AGE-SECRET-KEY-10Q6FGH2JQD9VS0ZM50KV7XVC8SAC50MM5DDH9DKWQR3RCSJKYM6QAX66U8";
 const TEST_USERNAME: &str = "test-user";
 const TEST_PASSWORD: &str = "test-password";
+
+static TEST_CONFIG: OnceCell<()> = OnceCell::new();
+
+fn init_test_config() {
+    TEST_CONFIG.get_or_init(|| {
+        init_config(Config {
+            database_path: ":memory:".to_string(),
+            bind_addr: "127.0.0.1:3000".to_string(),
+            web_app_url: "http://localhost:3000".to_string(),
+        });
+    });
+}
 
 async fn setup_test_app() -> Router {
     info!("Setting up test database");
@@ -47,10 +60,11 @@ async fn setup_test_app() -> Router {
     }
 
     info!("Database setup complete");
-    create_app(
-        db,
-        "http://localhost:3000".to_string()
-    )
+    
+    // Initialize config for tests
+    init_test_config();
+    
+    create_app(db)
 }
 
 // Helper function to read response body
