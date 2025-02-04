@@ -10,6 +10,8 @@
   export let cornerRadius = 20;
   export let requestAccess = 'write';
   export let action: 'login' | 'register' | 'connect' = 'login';
+  export let onSuccess: () => void = () => {};
+  export let onError: (error: string) => void = () => {};
 
   let widgetContainer: HTMLDivElement;
   let error: string | null = null;
@@ -39,14 +41,18 @@
           } else if (action === 'login') {
             await auth.login(response.data.token, response.data.user);
           }
-          // For connect action, we don't need to do anything special
-          // as the server will handle the connection
+          // For connect action, call success callback
+          if (action === 'connect') {
+            onSuccess();
+          }
         } else {
           error = response.error || 'Authentication failed';
+          onError(error);
           console.error('Auth failed:', response.error);
         }
       } catch (err) {
         error = err instanceof Error ? err.message : 'Authentication failed';
+        onError(error);
         console.error('Telegram auth error:', err);
       }
     };

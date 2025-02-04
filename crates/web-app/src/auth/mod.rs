@@ -202,7 +202,7 @@ fn extract_claims(req: &Request<Body>) -> Result<Option<Claims>, AppError> {
                     token,
                     &DecodingKey::from_secret(get_jwt_secret().as_bytes()),
                     &Validation::default(),
-                ).map_err(|_| AppError::Auth(format!("Invalid token")))?;
+                ).map_err(|_| AppError::Auth("Invalid token".to_string()))?;
                 Ok(Some(claims.claims))
             } else {
                 Err(AppError::Auth("Invalid authorization header format".to_string()))

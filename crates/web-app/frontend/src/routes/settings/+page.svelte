@@ -21,7 +21,7 @@
   let connectedAccounts: ConnectedAccount[] = [];
   let loadingAccounts = true;
 
-  onMount(async () => {
+  async function fetchConnectedAccounts() {
     try {
       const response = await get<ConnectedAccount[]>('/api/auth/connected-accounts');
       connectedAccounts = response.data || [];
@@ -31,7 +31,14 @@
     } finally {
       loadingAccounts = false;
     }
-  });
+  }
+
+  onMount(fetchConnectedAccounts);
+
+  async function handleTelegramConnect() {
+    await fetchConnectedAccounts();
+    success = 'Telegram account connected successfully';
+  }
 
   async function setPassword() {
     if (newPassword !== confirmNewPassword) {
@@ -243,6 +250,8 @@
                 <TelegramLoginWidget 
                   botName={import.meta.env.VITE_TELEGRAM_BOT_NAME} 
                   action="connect"
+                  onSuccess={handleTelegramConnect}
+                  onError={(err) => error = new Error(err)}
                 />
               {:else}
                 <div class="text-error text-sm text-center">

@@ -6,9 +6,7 @@ use sha2::{Sha256, Digest};
 use std::sync::Arc;
 use crate::{AppState, ApiResponse};
 use tracing::{info, error, debug};
-use jsonwebtoken::{decode, DecodingKey, Validation};
-
-use crate::auth::{create_token, store_credentials, AuthResponse, Claims, get_jwt_secret};
+use crate::auth::{create_token, store_credentials, AuthResponse, Claims};
 
 // Telegram login widget data
 #[derive(Debug, Deserialize)]
@@ -116,7 +114,7 @@ pub async fn telegram_verify_handler<D: Database>(
             sqlx::query(
                 "UPDATE user_credentials SET telegram_id = ?, updated_at = ? WHERE user_id = ?",
             )
-            .bind(&auth_data.id.to_string())
+            .bind(auth_data.id.to_string())
             .bind(now)
             .bind(&user.id)
             .execute(state.db.pool())
