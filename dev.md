@@ -25,7 +25,7 @@ Interface for users and admins to interact with the system.
         - Mailbox identification: A unique, random string appended to `@domain.com`.
         - Security: Each mailbox has:
             - A secure public key for email encryption.
-            - Configurable expiration (both for the mailbox and individual emails).
+            - Configurable expiration for emails (mailboxes do not expire).
     - **Settings Management:**
         - Update password.
         - Generate or revoke API keys for automated mailbox interaction.
@@ -45,6 +45,15 @@ Interface for users and admins to interact with the system.
         - Read mailbox content.
         - Long-polling for new emails in a mailbox.
         - Delete individual emails from a mailbox.
+
+## Frontend Development
+To run the frontend in development mode, ensure that Node.js and pnpm are installed.
+Navigate to the frontend directory:
+
+  cd crates/web-app/frontend
+  pnpm dev
+
+The development server typically runs on port 5173.
 
 ## Key Features
 - **Security by Design**:

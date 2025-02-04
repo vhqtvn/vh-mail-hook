@@ -141,4 +141,13 @@ APP_URL=http://localhost:3000
 - `GET /auth/google/login` - Start Google OAuth flow
 - `POST /auth/telegram/verify` - Verify Telegram login widget data
 
-All authentication methods return a JWT token that should be included in subsequent requests as a Bearer token in the Authorization header. 
+All authentication methods return a JWT token that should be included in subsequent requests as a Bearer token in the Authorization header.
+
+### Frontend Development
+
+To run the frontend in development mode, ensure you have Node.js and pnpm installed. Navigate to the frontend directory:
+
+  cd crates/web-app/frontend
+  pnpm dev
+
+The development server typically runs on port 5173. 
