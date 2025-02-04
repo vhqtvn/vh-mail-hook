@@ -99,6 +99,7 @@ pub fn create_routes<D: Database + 'static>() -> Router<Arc<AppState<D>>> {
                 .route("/set-password", post(set_password_handler::<D>))
                 .route("/telegram/disconnect", post(telegram_disconnect_handler::<D>))
                 .route("/google/disconnect", post(google_disconnect_handler::<D>))
+                .route("/github/disconnect", post(github_disconnect_handler::<D>))
                 .layer(middleware::from_fn(auth)),
         )
 }
@@ -159,10 +160,12 @@ async fn login_handler<D: Database>(
             AppError::Auth("Unable to verify credentials. Please try again later or contact support if the problem persists.".to_string())
         })?;
     
-    if !password::verify_password(
-        &req.password,
-        credentials.password_hash.as_deref().unwrap_or_default(),
-    )? {
+    let password_hash = credentials.password_hash.as_deref().unwrap_or_default();
+    if password_hash.is_empty() {
+        return Err(AppError::Auth("No password has been set for this account. Please use another login method or reset your password.".to_string()));
+    }
+
+    if !password::verify_password(&req.password, password_hash)? {
         return Err(AppError::Auth("The username or password you entered is incorrect. Please check your credentials and try again.".to_string()));
     }
 
@@ -248,29 +251,61 @@ pub(crate) async fn store_credentials<D: Database>(
     db: &D,
     user_id: &str,
     password_hash: Option<&str>,
-    oauth_provider: Option<&str>,
-    oauth_id: Option<&str>,
+    provider: Option<&str>,
+    provider_id: Option<&str>,
     telegram_id: Option<&str>,
 ) -> Result<(), AppError> {
     let now = chrono::Utc::now().timestamp();
 
-    sqlx::query(
-        "INSERT INTO user_credentials (user_id, password_hash, oauth_provider, oauth_id, telegram_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)",
-    )
-    .bind(user_id)
-    .bind(password_hash)
-    .bind(oauth_provider)
-    .bind(oauth_id)
-    .bind(telegram_id)
-    .bind(now)
-    .bind(now)
-    .execute(db.pool())
-    .await
-    .map_err(|e| {
-        tracing::error!("Database error while storing credentials: {}", e);
-        AppError::Internal("Unable to set up user credentials. Please try logging in again, or contact support if the issue persists.".to_string())
-    })?;
+    let mut query = String::from(
+        "INSERT INTO user_credentials (user_id, password_hash, created_at, updated_at"
+    );
+    let mut values = String::from("VALUES (?, ?, ?, ?");
+    let mut params: Vec<String> = vec![
+        user_id.to_string(),
+        password_hash.unwrap_or_default().to_string(),
+        now.to_string(),
+        now.to_string(),
+    ];
+
+    if let (Some(provider), Some(id)) = (provider, provider_id) {
+        match provider {
+            "google" => {
+                query.push_str(", google_id");
+                values.push_str(", ?");
+                params.push(id.to_string());
+            }
+            "github" => {
+                query.push_str(", github_id");
+                values.push_str(", ?");
+                params.push(id.to_string());
+            }
+            _ => {}
+        }
+    }
+
+    if let Some(id) = telegram_id {
+        query.push_str(", telegram_id");
+        values.push_str(", ?");
+        params.push(id.to_string());
+    }
+
+    query.push_str(") ");
+    values.push(')');
+    query.push_str(&values);
+
+    let mut db_query = sqlx::query(&query);
+    for param in params {
+        db_query = db_query.bind(param);
+    }
+
+    db_query
+        .execute(db.pool())
+        .await
+        .map_err(|e| {
+            tracing::error!("Database error while storing credentials: {}", e);
+            AppError::Internal("Unable to set up user credentials. Please try logging in again, or contact support if the issue persists.".to_string())
+        })?;
 
     Ok(())
 }
@@ -310,8 +345,8 @@ pub(crate) async fn get_user_by_username<D: Database>(
 pub(crate) struct UserCredentials {
     pub user_id: String,
     pub password_hash: Option<String>,
-    pub oauth_provider: Option<String>,
-    pub oauth_id: Option<String>,
+    pub google_id: Option<String>,
+    pub github_id: Option<String>,
     pub telegram_id: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
@@ -356,20 +391,31 @@ async fn connected_accounts_handler<D: Database>(
     let mut accounts = Vec::new();
 
     // Add password if set
-    if credentials.password_hash.is_some() {
+    if let Some(hash) = &credentials.password_hash {
+        if !hash.is_empty() {
+            accounts.push(ConnectedAccount {
+                provider: "password".to_string(),
+                connected_at: credentials.created_at,
+                provider_id: None,
+            });
+        }
+    }
+
+    // Add Google if present
+    if let Some(google_id) = credentials.google_id {
         accounts.push(ConnectedAccount {
-            provider: "password".to_string(),
+            provider: "google".to_string(),
             connected_at: credentials.created_at,
-            provider_id: None,
+            provider_id: Some(google_id),
         });
     }
 
-    // Add OAuth provider if present
-    if let Some(provider) = credentials.oauth_provider {
+    // Add GitHub if present
+    if let Some(github_id) = credentials.github_id {
         accounts.push(ConnectedAccount {
-            provider,
+            provider: "github".to_string(),
             connected_at: credentials.created_at,
-            provider_id: credentials.oauth_id,
+            provider_id: Some(github_id),
         });
     }
 
@@ -492,4 +538,92 @@ pub(crate) async fn generate_unique_username<D: Database>(
             }
         }
     }
+}
+
+pub async fn github_disconnect_handler<D: Database>(
+    State(state): State<Arc<AppState<D>>>,
+    claims: axum::extract::Extension<Claims>,
+) -> Result<Json<ApiResponse<()>>, AppError> {
+    // Check if user has other authentication methods before disconnecting
+    let credentials = sqlx::query_as::<_, UserCredentials>(
+        "SELECT * FROM user_credentials WHERE user_id = ?"
+    )
+    .bind(&claims.sub)
+    .fetch_one(state.db.pool())
+    .await
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Check if user is authenticated with GitHub
+    if credentials.github_id.is_none() {
+        return Err(AppError::Auth("No GitHub account connected".to_string()));
+    }
+
+    // Ensure user has at least one other authentication method
+    let has_password = credentials.password_hash.is_some();
+    let has_google = credentials.google_id.is_some();
+    let has_telegram = credentials.telegram_id.is_some();
+    if !has_password && !has_google && !has_telegram {
+        return Err(AppError::Auth(
+            "Cannot disconnect GitHub account: it is your only authentication method".to_string(),
+        ));
+    }
+
+    // Remove GitHub credentials
+    sqlx::query(
+        r#"UPDATE user_credentials 
+           SET github_id = NULL, 
+               updated_at = ? 
+           WHERE user_id = ?"#
+    )
+    .bind(chrono::Utc::now().timestamp())
+    .bind(&claims.sub)
+    .execute(state.db.pool())
+    .await
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    Ok(Json(ApiResponse::success(())))
+}
+
+pub async fn google_disconnect_handler<D: Database>(
+    State(state): State<Arc<AppState<D>>>,
+    claims: axum::extract::Extension<Claims>,
+) -> Result<Json<ApiResponse<()>>, AppError> {
+    // Check if user has other authentication methods before disconnecting
+    let credentials = sqlx::query_as::<_, UserCredentials>(
+        "SELECT * FROM user_credentials WHERE user_id = ?"
+    )
+    .bind(&claims.sub)
+    .fetch_one(state.db.pool())
+    .await
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Check if user is authenticated with Google
+    if credentials.google_id.is_none() {
+        return Err(AppError::Auth("No Google account connected".to_string()));
+    }
+
+    // Ensure user has at least one other authentication method
+    let has_password = credentials.password_hash.is_some();
+    let has_github = credentials.github_id.is_some();
+    let has_telegram = credentials.telegram_id.is_some();
+    if !has_password && !has_github && !has_telegram {
+        return Err(AppError::Auth(
+            "Cannot disconnect Google account: it is your only authentication method".to_string(),
+        ));
+    }
+
+    // Remove Google credentials
+    sqlx::query(
+        r#"UPDATE user_credentials 
+           SET google_id = NULL, 
+               updated_at = ? 
+           WHERE user_id = ?"#
+    )
+    .bind(chrono::Utc::now().timestamp())
+    .bind(&claims.sub)
+    .execute(state.db.pool())
+    .await
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    Ok(Json(ApiResponse::success(())))
 }

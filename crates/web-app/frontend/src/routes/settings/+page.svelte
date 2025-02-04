@@ -4,6 +4,7 @@
   import ErrorAlert from '$lib/components/ErrorAlert.svelte';
   import TelegramLoginWidget from '$lib/components/TelegramLoginWidget.svelte';
   import GoogleLoginButton from '$lib/components/GoogleLoginButton.svelte';
+  import GitHubLoginButton from '$lib/components/GitHubLoginButton.svelte';
   import { fade } from 'svelte/transition';
   import { elasticOut } from 'svelte/easing';
 
@@ -48,6 +49,11 @@
   async function handleGoogleConnect() {
     await fetchConnectedAccounts();
     success = 'Google account connected successfully';
+  }
+
+  async function handleGitHubConnect() {
+    await fetchConnectedAccounts();
+    success = 'GitHub account connected successfully';
   }
 
   async function setPassword() {
@@ -141,6 +147,26 @@
     } catch (e) {
       error = e;
       loading = false;
+    }
+  }
+
+  async function disconnectGoogle() {
+    try {
+      await post('/api/auth/google/disconnect', {});
+      await fetchConnectedAccounts();
+      success = 'Google account disconnected successfully';
+    } catch (e) {
+      error = e;
+    }
+  }
+
+  async function disconnectGitHub() {
+    try {
+      await post('/api/auth/github/disconnect', {});
+      await fetchConnectedAccounts();
+      success = 'GitHub account disconnected successfully';
+    } catch (e) {
+      error = e;
     }
   }
 
@@ -324,14 +350,39 @@
               </div>
               <button
                 class="btn btn-sm btn-error"
-                on:click={() => disconnectAccount('google')}
+                on:click={disconnectGoogle}
               >
                 Disconnect
               </button>
             </div>
           {:else}
             <div class="flex flex-col items-center gap-4 p-4 bg-base-300 rounded-lg">
-              <GoogleLoginButton action="connect" onSuccess={handleGoogleConnect} />
+              <GoogleLoginButton action="connect" onSuccess={handleGoogleConnect} onError={(e) => error = e} />
+            </div>
+          {/if}
+
+          <!-- GitHub -->
+          {#if connectedAccounts.find(acc => acc.provider === 'github')}
+            <div class="flex items-center justify-between p-4 bg-base-300 rounded-lg">
+              <div class="flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 488 512">
+                  <path fill="currentColor" d="M488 261.8C488 403.3 391.1 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 123 24.5 166.3 64.9l-67.5 64.9C258.5 52.6 94.3 116.6 94.3 256c0 86.5 69.1 156.6 153.7 156.6 98.2 0 135-70.4 140.8-106.9H248v-85.3h236.1c2.3 12.7 3.9 24.9 3.9 41.4z"/>
+                </svg>
+                <div>
+                  <span class="font-medium">GitHub</span>
+                  <div class="text-sm opacity-70">Connected</div>
+                </div>
+              </div>
+              <button
+                class="btn btn-sm btn-error"
+                on:click={() => disconnectAccount('github')}
+              >
+                Disconnect
+              </button>
+            </div>
+          {:else}
+            <div class="flex flex-col items-center gap-4 p-4 bg-base-300 rounded-lg">
+              <GitHubLoginButton action="connect" onSuccess={handleGitHubConnect} onError={(e) => error = e} />
             </div>
           {/if}
         </div>

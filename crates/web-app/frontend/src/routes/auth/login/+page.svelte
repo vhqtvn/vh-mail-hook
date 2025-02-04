@@ -5,6 +5,7 @@
   import { goto, invalidateAll } from '$app/navigation';
   import TelegramLoginWidget from '$lib/components/TelegramLoginWidget.svelte';
   import GoogleLoginButton from '$lib/components/GoogleLoginButton.svelte';
+  import GitHubLoginButton from '$lib/components/GitHubLoginButton.svelte';
 
   let username = '';
   let password = '';
@@ -83,6 +84,7 @@
       <TelegramLoginWidget 
         botName={import.meta.env.VITE_TELEGRAM_BOT_NAME} 
         action="login"
+        onError={(e) => error = e}
       />
     {:else}
       <div class="text-error text-sm text-center">
@@ -90,7 +92,8 @@
       </div>
     {/if}
 
-    <GoogleLoginButton action="login" />
+    <GoogleLoginButton action="login" onError={(e) => error = e} />
+    <GitHubLoginButton action="login" onError={(e) => error = e} />
   </div>
 
   <p class="text-center mt-4">

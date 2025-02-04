@@ -4,6 +4,7 @@
   import ErrorAlert from '$lib/components/ErrorAlert.svelte';
   import TelegramLoginWidget from '$lib/components/TelegramLoginWidget.svelte';
   import GoogleLoginButton from '$lib/components/GoogleLoginButton.svelte';
+  import GitHubLoginButton from '$lib/components/GitHubLoginButton.svelte';
 
   let username = '';
   let password = '';
@@ -101,18 +102,9 @@
   <div class="divider">OR</div>
 
   <div class="space-y-4">
-    {#if import.meta.env.VITE_TELEGRAM_BOT_NAME}
-      <TelegramLoginWidget 
-        botName={import.meta.env.VITE_TELEGRAM_BOT_NAME} 
-        action="register"
-      />
-    {:else}
-      <div class="text-error text-sm text-center">
-        Telegram login is not configured (VITE_TELEGRAM_BOT_NAME not set)
-      </div>
-    {/if}
-
-    <GoogleLoginButton action="register" />
+    <GoogleLoginButton action="register" onError={(e) => error = e} />
+    <GitHubLoginButton action="register" onError={(e) => error = e} />
+    <TelegramLoginWidget onError={(e) => error = e} />
   </div>
 
   <p class="text-center mt-4">

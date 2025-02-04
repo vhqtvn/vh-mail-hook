@@ -6,7 +6,7 @@ use sha2::{Sha256, Digest};
 use std::sync::Arc;
 use crate::{AppState, ApiResponse};
 use tracing::{info, error, debug};
-use crate::auth::{create_token, store_credentials, AuthResponse, Claims};
+use crate::auth::{create_token, store_credentials, AuthResponse, Claims, get_credentials};
 
 // Telegram login widget data
 #[derive(Debug, Deserialize)]
@@ -230,22 +230,25 @@ pub async fn telegram_disconnect_handler<D: Database>(
     debug!("Processing Telegram disconnect request for user: {}", claims.sub);
 
     // Check if user has other authentication methods before disconnecting
-    let credentials = sqlx::query_as::<_, UserCredentials>(
-        "SELECT * FROM user_credentials WHERE user_id = ?",
-    )
-    .bind(&claims.sub)
-    .fetch_one(state.db.pool())
-    .await
-    .map_err(|e| {
-        error!("Database error while fetching credentials: {}", e);
-        AppError::Internal("Failed to verify account status. Please try again.".to_string())
-    })?;
-
-    // Count available auth methods
+    let credentials = get_credentials(&state.db, &claims.sub).await?;
     let mut auth_methods = 0;
-    if credentials.password_hash.is_some() { auth_methods += 1; }
-    if credentials.oauth_provider.is_some() { auth_methods += 1; }
-    if credentials.telegram_id.is_some() { auth_methods += 1; }
+
+    if let Some(hash) = &credentials.password_hash {
+        if !hash.is_empty() {
+            auth_methods += 1;
+        }
+    }
+    if credentials.google_id.is_some() {
+        auth_methods += 1;
+    }
+
+    if credentials.github_id.is_some() {
+        auth_methods += 1;
+    }
+
+    if credentials.telegram_id.is_some() {
+        auth_methods += 1;
+    }
 
     if auth_methods <= 1 {
         error!("User attempted to disconnect last auth method: {}", claims.sub);
@@ -270,10 +273,3 @@ pub async fn telegram_disconnect_handler<D: Database>(
     info!("Successfully disconnected Telegram for user: {}", claims.sub);
     Ok(Json(ApiResponse::success(())))
 }
-
-#[derive(sqlx::FromRow)]
-struct UserCredentials {
-    password_hash: Option<String>,
-    oauth_provider: Option<String>,
-    telegram_id: Option<String>,
-} 

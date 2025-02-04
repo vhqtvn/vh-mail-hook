@@ -112,18 +112,20 @@ impl Database for SqliteDatabase {
     }
 
     async fn create_user(&self, username: &str, auth_type: AuthType) -> Result<User, AppError> {
+        let now = chrono::Utc::now().timestamp();
         let user = User {
             id: uuid::Uuid::new_v4().to_string(),
             username: username.to_string(),
             auth_type,
-            created_at: chrono::Utc::now().timestamp(),
+            created_at: now,
         };
 
-        sqlx::query("INSERT INTO users (id, username, auth_type, created_at) VALUES (?, ?, ?, ?)")
+        sqlx::query("INSERT INTO users (id, username, auth_type, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
             .bind(&user.id)
             .bind(&user.username)
             .bind(&user.auth_type)
-            .bind(user.created_at)
+            .bind(now)
+            .bind(now)
             .execute(&self.pool)
             .await
             .map_err(|e| AppError::Database(e.to_string()))?;

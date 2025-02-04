@@ -3,14 +3,15 @@ CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
     auth_type TEXT NOT NULL,
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS user_credentials (
     user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     password_hash TEXT,
-    oauth_provider TEXT,
-    oauth_id TEXT,
+    google_id TEXT,
+    github_id TEXT,
     telegram_id TEXT,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
@@ -66,9 +67,23 @@ CREATE INDEX IF NOT EXISTS idx_mailboxes_owner ON mailboxes(owner_id);
 CREATE INDEX IF NOT EXISTS idx_emails_mailbox ON emails(mailbox_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id);
 
-CREATE INDEX IF NOT EXISTS idx_user_credentials_oauth 
-ON user_credentials(oauth_provider, oauth_id)
-WHERE oauth_provider IS NOT NULL AND oauth_id IS NOT NULL;
+-- Drop the old index if it exists (to avoid conflicts)
+DROP INDEX IF EXISTS idx_user_credentials_oauth;
+
+-- Create new table for multiple OAuth providers
+CREATE TABLE IF NOT EXISTS oauth_credentials (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider TEXT NOT NULL,
+    provider_user_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    UNIQUE(provider, provider_user_id)
+);
+
+-- Create index for OAuth lookups
+CREATE INDEX IF NOT EXISTS idx_oauth_credentials_lookup 
+ON oauth_credentials(provider, provider_user_id);
 
 CREATE INDEX IF NOT EXISTS idx_user_credentials_telegram
 ON user_credentials(telegram_id)
