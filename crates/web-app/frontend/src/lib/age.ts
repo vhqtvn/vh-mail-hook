@@ -26,22 +26,26 @@ export async function validateAgePublicKey(key: string): Promise<boolean> {
   }
 }
 
+// this help inconsistence between dev and prod
+var __importDefault = function (mod: any) {
+  return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+
 export async function generateAgeKeyPair(): Promise<AgeKeyPair> {
-  // Import modules dynamically
-  const [naclModule, bech32Module] = await Promise.all([
+  const [naclModule, bech32Module] = (await Promise.all([
     import('tweetnacl'),
     import('bech32')
-  ]);
-  
+  ])).map(m => __importDefault(m));
+
   // Generate X25519 key pair using TweetNaCl
   const keyPair = naclModule.box.keyPair();
-  
+
   // Convert public key to 5-bit words for bech32
   const publicKeyWords = bech32Module.bech32.toWords(Array.from(keyPair.publicKey));
-  
+
   // Encode public key in bech32 format with 'age' prefix
   const publicKey = bech32Module.bech32.encode('age', publicKeyWords);
-  
+
   const privateKeyWords = bech32Module.bech32.toWords(Array.from(keyPair.secretKey));
   const privateKey = bech32Module.bech32.encode('AGE-SECRET-KEY-', privateKeyWords).toLocaleUpperCase();
 
