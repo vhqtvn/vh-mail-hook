@@ -43,4 +43,4 @@ bytes = "1.5"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 http-body-util = "0.1"
-once_cell = "1.19" 
+once_cell = { workspace = true }

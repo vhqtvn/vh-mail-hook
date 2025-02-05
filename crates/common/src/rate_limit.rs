@@ -4,12 +4,20 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::fmt::Display;
 
+type RateLimiterMap = Arc<Mutex<HashMap<ResourceKey, Arc<Mutex<RateLimiter>>>>>;
+
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct ResourceKey(String);
 
-impl<T: Into<String>> From<T> for ResourceKey {
-    fn from(value: T) -> Self {
-        ResourceKey(value.into())
+impl From<String> for ResourceKey {
+    fn from(value: String) -> Self {
+        ResourceKey(value)
+    }
+}
+
+impl From<&str> for ResourceKey {
+    fn from(value: &str) -> Self {
+        ResourceKey(value.to_string())
     }
 }
 
@@ -39,11 +47,9 @@ pub struct RateLimiterConfig {
     pub rules: Vec<RateLimitRule>,
 }
 
-impl<T: Into<Vec<RateLimitRule>>> From<T> for RateLimiterConfig {
-    fn from(value: T) -> Self {
-        RateLimiterConfig {
-            rules: value.into(),
-        }
+impl From<Vec<RateLimitRule>> for RateLimiterConfig {
+    fn from(rules: Vec<RateLimitRule>) -> Self {
+        RateLimiterConfig { rules }
     }
 }
 
@@ -131,8 +137,7 @@ impl RateLimiter {
     }
 }
 
-static RATE_LIMITERS: Lazy<Arc<Mutex<HashMap<ResourceKey, Arc<Mutex<RateLimiter>>>>>> =
-    Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
+static RATE_LIMITERS: Lazy<RateLimiterMap> = Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 
 pub fn get_or_create_rate_limiter<K, C>(key: K, config: C) -> Arc<Mutex<RateLimiter>>
 where

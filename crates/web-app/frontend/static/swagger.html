@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <title>API Documentation</title>
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.25.0/themes/prism.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.25.0/themes/prism-okaidia.min.css" />
     <style>
         html {
             box-sizing: border-box;
@@ -26,6 +28,10 @@
 <body>
     <div id="swagger-ui"></div>
     <script src="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui-bundle.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.25.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.25.0/components/prism-bash.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.25.0/components/prism-javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.25.0/components/prism-python.min.js"></script>
     <script>
         window.onload = function() {
             window.ui = SwaggerUIBundle({
@@ -37,7 +43,17 @@
                     SwaggerUIBundle.SwaggerUIStandalonePreset
                 ],
                 layout: "BaseLayout",
-                supportedSubmitMethods: []  // Disable Try it out buttons
+                syntaxHighlight: true,
+                requestInterceptor: (request) => {
+                    return request;
+                },
+                defaultModelRendering: 'model',
+                displayRequestDuration: true,
+                docExpansion: 'list',
+                filter: true,
+                showExtensions: true,
+                showCommonExtensions: true,
+                supportedSubmitMethods: ['get', 'post', 'put', 'delete', 'patch'],
             });
         };
     </script>

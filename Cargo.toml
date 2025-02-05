@@ -24,6 +24,7 @@ uuid = { version = "1.6", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.4", features = ["derive", "env"] }
 dotenv = "0.15"
+once_cell = "1.19" 
 
 [package]
 name = "vh-mail-hook"
@@ -42,3 +43,4 @@ mail-service = { path = "crates/mail-service" }
 web-app = { path = "crates/web-app" }
 common = { path = "crates/common" }
 dotenv = { workspace = true }
+once_cell = { workspace = true }

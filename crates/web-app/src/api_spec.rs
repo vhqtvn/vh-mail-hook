@@ -132,6 +132,12 @@ fn parse_parameters(params: &str) -> Vec<Parameter> {
             let parts: Vec<&str> = line.trim_start_matches('-').trim().split(':').collect();
             let name = parts[0].trim();
             let description = parts.get(1).map(|s| s.trim()).unwrap_or_default();
+
+            let name = if name.starts_with('`') && name.ends_with('`') {
+                &name[1..name.len() - 1]
+            } else {
+                name
+            };
             
             Parameter {
                 name: name.to_string(),

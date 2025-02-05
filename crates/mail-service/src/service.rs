@@ -6,7 +6,7 @@ use anyhow::Result;
 use common::{db::Database, AppError, Email};
 use dashmap::DashMap;
 use governor::{
-    state::{InMemoryState, NotKeyed, KeyedStateStore},
+    state::keyed::DashMapStateStore,
     Quota, RateLimiter,
     clock::DefaultClock,
 };
@@ -30,7 +30,7 @@ pub struct MailService {
     db: Arc<dyn Database>,
     blocked_networks: Vec<IpNetwork>,
     max_email_size: usize,
-    rate_limiter: Arc<RateLimiter<IpAddr, InMemoryState, DefaultClock>>,
+    rate_limiter: Arc<RateLimiter<IpAddr, DashMapStateStore<IpAddr>, DefaultClock>>,
     greylist: Arc<DashMap<(IpAddr, String, String), i64>>, // (IP, from, to) -> first_seen
     enable_greylisting: bool,
     greylist_delay: Duration,
@@ -42,7 +42,7 @@ pub struct MailService {
 
 impl MailService {
     pub async fn new(db: Arc<dyn Database>, config: ServiceConfig) -> Result<Self> {
-        let rate_limiter = Arc::new(RateLimiter::keyed(Quota::per_hour(
+        let rate_limiter = Arc::new(RateLimiter::dashmap(Quota::per_hour(
             std::num::NonZeroU32::new(config.rate_limit_per_hour).unwrap(),
         )));
 
@@ -67,7 +67,7 @@ impl MailService {
         config: ServiceConfig,
         dns_resolver: Arc<dyn DnsResolver>,
     ) -> Result<Self> {
-        let rate_limiter = Arc::new(RateLimiter::keyed(Quota::per_hour(
+        let rate_limiter = Arc::new(RateLimiter::dashmap(Quota::per_hour(
             std::num::NonZeroU32::new(config.rate_limit_per_hour).unwrap(),
         )));
 
@@ -87,7 +87,7 @@ impl MailService {
 
     #[cfg(any(test, feature = "test"))]
     pub async fn with_mock_resolver(db: Arc<dyn Database>, config: ServiceConfig, mx_records: Vec<String>) -> Result<Self> {
-        let rate_limiter = Arc::new(RateLimiter::keyed(Quota::per_hour(
+        let rate_limiter = Arc::new(RateLimiter::dashmap(Quota::per_hour(
             std::num::NonZeroU32::new(config.rate_limit_per_hour).unwrap(),
         )));
 
