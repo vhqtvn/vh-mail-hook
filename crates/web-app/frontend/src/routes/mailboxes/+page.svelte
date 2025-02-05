@@ -254,14 +254,14 @@
                 <div class="text-sm font-semibold mb-2">Email Address</div>
                 <div class="flex gap-2 items-center">
                   <div class="text-base text-base-content/70 flex-1 font-mono bg-base-300 p-3 rounded min-w-0">
-                    <div class="flex items-center">
-                      <span class="text-primary font-semibold whitespace-nowrap">{mailbox.alias}@</span>
+                    <div class="flex items-center pointer-events-none">
+                      <span class="text-primary font-semibold whitespace-nowrap">{mailbox.alias}</span>
                       {#if supportedDomains.length > 1}
                         <div class="dropdown dropdown-hover inline-block">
                           <button 
                             class="text-base-content/50 cursor-pointer"
                             aria-label="Select domain"
-                          >{selectedDomain}</button>
+                          >@{selectedDomain}</button>
                           <ul class="dropdown-content z-[1] menu p-2 shadow bg-base-200 rounded-box">
                             {#each supportedDomains as domain}
                               <li>
@@ -276,7 +276,7 @@
                           </ul>
                         </div>
                       {:else}
-                        <span class="text-base-content/50">{supportedDomains[0] || 'any-supported-domain'}</span>
+                        <span class="text-base-content/50">@{supportedDomains[0] || 'any-supported-domain'}</span>
                       {/if}
                     </div>
                   </div>
