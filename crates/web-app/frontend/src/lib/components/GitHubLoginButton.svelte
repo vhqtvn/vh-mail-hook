@@ -3,9 +3,9 @@
   import { post } from '$lib/api';
   import { page } from '$app/stores';
 
-  export let action: 'login' | 'register' | 'connect' = 'login';
-  export let onSuccess: () => void = () => {};
-  export let onError: (error: string) => void = () => {};
+  export let action = "login";
+  export const onSuccess = () => {};
+  export const onError = (_error: string) => {};
 
   let error: string | null = null;
   let errorElement: HTMLElement;
@@ -53,14 +53,12 @@
 </button>
 
 <style>
-  @keyframes shake {
-    0%, 100% { transform: translateX(0); }
-    10%, 30%, 50%, 70%, 90% { transform: translateX(-2px); }
-    20%, 40%, 60%, 80% { transform: translateX(2px); }
+  /* Remove unused CSS */
+  button {
+    transition: all 0.2s ease-in-out;
   }
 
-  .error-shake {
-    animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
-    background-color: rgba(255, 0, 0, 0.1);
+  button:hover {
+    transform: translateY(-1px);
   }
 </style> 

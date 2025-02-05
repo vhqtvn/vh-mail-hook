@@ -3,9 +3,9 @@
   import { post } from '$lib/api';
   import { page } from '$app/stores';
 
-  export let action: 'login' | 'register' | 'connect' = 'login';
-  export let onSuccess: () => void = () => {};
-  export let onError: (error: string) => void = () => {};
+  export let action = "login";
+  export const onSuccess = () => {};
+  export const onError = (_error: string) => {};
 
   let error: string | null = null;
   let errorElement: HTMLElement;

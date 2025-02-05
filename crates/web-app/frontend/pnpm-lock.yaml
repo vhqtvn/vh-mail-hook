@@ -11,6 +11,9 @@ importers:
       age-encryption:
         specifier: ^0.2.0
         version: 0.2.0
+      cookie:
+        specifier: 0.6.0
+        version: 0.6.0
       daisyui:
         specifier: ^4.12.23
         version: 4.12.23(postcss@8.5.1)

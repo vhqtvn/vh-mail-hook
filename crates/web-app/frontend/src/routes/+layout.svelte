@@ -55,14 +55,17 @@
 				</a>
 				<div class="dropdown dropdown-end">
 					<div class="tooltip tooltip-bottom" data-tip="Account Settings">
-						<label tabindex="-1" class="avatar flex items-center gap-1 cursor-pointer group hover:opacity-90 transition-opacity">
+						<button
+							class="avatar flex items-center gap-1 cursor-pointer group hover:opacity-90 transition-opacity"
+							aria-label="Open account settings"
+						>
 							<div class="w-8 h-8 rounded-full ring-2 ring-primary/20 group-hover:ring-primary/40 transition-all">
 								<img src={`https://ui-avatars.com/api/?name=${$auth.username}&background=random`} alt="User avatar" />
 							</div>
-							<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-base-content/50 group-hover:text-base-content/70 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-							</svg>
-						</label>
+							<span class="text-base-content/70 group-hover:text-base-content transition-colors">
+								{$auth.username}
+							</span>
+						</button>
 					</div>
 					<ul tabindex="-1" class="mt-2 z-[1] p-2 shadow-lg menu menu-sm dropdown-content rounded-lg w-52 bg-base-100 border border-base-200">
 						<li><a href="/settings" class="py-2 px-4 text-base-content hover:bg-base-200 rounded-lg">Settings</a></li>

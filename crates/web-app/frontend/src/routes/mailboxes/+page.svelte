@@ -240,6 +240,7 @@
               <button 
                 class="btn btn-square btn-sm btn-ghost text-error" 
                 on:click={() => deleteMailbox(mailbox.id)}
+                aria-label="Delete mailbox"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -254,10 +255,14 @@
                 <div class="flex gap-2 items-center">
                   <div class="text-base text-base-content/70 flex-1 font-mono bg-base-300 p-3 rounded min-w-0">
                     <div class="flex items-center">
-                      <span class="text-primary font-semibold whitespace-nowrap">{mailbox.alias}@</span>{#if supportedDomains.length > 1}
+                      <span class="text-primary font-semibold whitespace-nowrap">{mailbox.alias}@</span>
+                      {#if supportedDomains.length > 1}
                         <div class="dropdown dropdown-hover inline-block">
-                          <span class="text-base-content/50 cursor-pointer" tabindex="0">{selectedDomain}</span>
-                          <ul tabindex="-1" class="dropdown-content z-[1] menu p-2 shadow bg-base-200 rounded-box">
+                          <button 
+                            class="text-base-content/50 cursor-pointer"
+                            aria-label="Select domain"
+                          >{selectedDomain}</button>
+                          <ul class="dropdown-content z-[1] menu p-2 shadow bg-base-200 rounded-box">
                             {#each supportedDomains as domain}
                               <li>
                                 <button 
@@ -283,6 +288,7 @@
                       navigator.clipboard.writeText(email);
                       showNotification('Email address copied to clipboard');
                     }}
+                    aria-label="Copy mailbox address"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-12a2 2 0 00-2-2h-2M8 5a2 2 0 002 2h4a2 2 0 002-2M8 5a2 2 0 012-2h4a2 2 0 012 2" />
@@ -306,7 +312,7 @@
                       navigator.clipboard.writeText(mailbox.id);
                       showNotification('Mailbox ID copied to clipboard');
                     }}
-                    title="Copy ID"
+                    aria-label="Copy ID"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
@@ -330,6 +336,7 @@
                       navigator.clipboard.writeText(mailbox.public_key);
                       showNotification('Public key copied to clipboard');
                     }}
+                    aria-label="Copy public key"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-12a2 2 0 00-2-2h-2M8 5a2 2 0 002 2h4a2 2 0 002-2M8 5a2 2 0 012-2h4a2 2 0 012 2" />
@@ -366,72 +373,77 @@
 
       <form on:submit|preventDefault={createMailbox}>
         <div class="form-control">
-          <label class="label">
+          <label class="label" for="mailbox-name">
             <span class="label-text">Mailbox Name</span>
           </label>
           <input
             type="text"
-            bind:value={mailboxName}
+            id="mailbox-name"
             class="input input-bordered w-full"
-            placeholder="My Mailbox"
+            bind:value={mailboxName}
+            placeholder="Enter mailbox name"
             required
           />
         </div>
 
         <div class="form-control mt-4">
-          <label class="label">
+          <label class="label" for="expiration-time">
             <span class="label-text">Expiration Time (max 30 days)</span>
           </label>
           <div class="grid grid-cols-4 gap-2">
-            <div>
+            <div class="form-control">
               <input
                 type="number"
-                bind:value={expirationDays}
+                id="expiration-days"
                 class="input input-bordered w-full"
+                bind:value={expirationDays}
                 min="0"
                 max="30"
                 placeholder="Days"
               />
-              <label class="label">
+              <label class="label" for="expiration-days">
                 <span class="label-text-alt">Days</span>
               </label>
             </div>
-            <div>
+            <div class="form-control">
               <input
                 type="number"
-                bind:value={expirationHours}
+                id="expiration-hours"
                 class="input input-bordered w-full"
+                bind:value={expirationHours}
                 min="0"
                 max="23"
                 placeholder="Hours"
               />
-              <label class="label">
+              <label class="label" for="expiration-hours">
                 <span class="label-text-alt">Hours</span>
               </label>
             </div>
-            <div>
+            <div class="form-control">
               <input
                 type="number"
-                bind:value={expirationMinutes}
+                id="expiration-minutes"
                 class="input input-bordered w-full"
+                bind:value={expirationMinutes}
                 min="0"
                 max="59"
                 placeholder="Mins"
               />
-              <label class="label">
+              <label class="label" for="expiration-minutes">
                 <span class="label-text-alt">Minutes</span>
               </label>
             </div>
-            <div>
+            <div class="form-control">
               <input
                 type="number"
-                bind:value={expirationSeconds}
+                id="expiration-seconds"
                 class="input input-bordered w-full"
+                bind:value={expirationSeconds}
                 min="0"
                 max="59"
                 placeholder="Secs"
               />
-              <label class="label">
+              <label class="label" for="expiration-seconds">
                 <span class="label-text-alt">Seconds</span>
               </label>
             </div>
@@ -439,15 +451,16 @@
         </div>
 
         <div class="form-control mt-4">
-          <label class="label">
+          <label class="label" for="public-key">
             <span class="label-text">Public Key (age format)</span>
           </label>
-          <div class="flex gap-2">
+          <div class="join w-full">
             <input
               type="text"
+              id="public-key"
+              class="input input-bordered join-item w-full"
               bind:value={publicKey}
               on:input={(e) => updatePublicKey((e.target as HTMLInputElement).value)}
-              class="input input-bordered flex-1 font-mono text-sm"
               placeholder="age1..."
               required
             />
@@ -468,18 +481,14 @@
             </button>
           </div>
           {#if publicKeyError}
-            <label class="label">
-              <span class="label-text-alt text-error">{publicKeyError}</span>
-            </label>
+            <div class="text-error text-sm mt-1">{publicKeyError}</div>
           {/if}
-          <label class="label">
-            <span class="label-text-alt text-info flex items-center gap-1">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span>Keys are generated in your browser - private keys never leave your device</span>
-            </span>
-          </label>
+          <div class="text-info text-sm mt-1 flex items-center gap-1">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>The public key will be used to encrypt emails sent to this mailbox</span>
+          </div>
         </div>
 
         <div class="modal-action">
