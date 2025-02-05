@@ -79,7 +79,8 @@
       <p class="text-base mb-6">
         API keys allow you to authenticate with the API programmatically. Keep them secure and never share them.
         Each key has full access to your account, so treat them like passwords.
-        View the <a href="/api/docs" class="link link-primary">API documentation</a> to learn how to use these keys.
+        View the <a href="/api/docs" class="link link-primary" target="_blank" rel="noopener noreferrer">API documentation</a> to learn how to use these keys.
+        For code examples and implementation guides, check out our <a href="https://github.com/vhqtvn/vh-mail-hook/tree/main/examples" class="link link-primary" target="_blank" rel="noopener noreferrer">examples repository</a>.
       </p>
 
       {#if loading}

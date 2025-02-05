@@ -283,9 +283,9 @@ pub fn generate_spec() -> String {
     let spec = SwaggerSpec {
         swagger: "2.0".to_string(),
         info: Info {
-            title: "Mail Hook API".to_string(),
+            title: "VH Mail Hook API".to_string(),
             version: "1.0.0".to_string(),
-            description: "API for accessing emails in Mail Hook mailboxes".to_string(),
+            description: "API for managing email hooks. For examples and usage guide, see: https://github.com/vhqtvn/vh-mail-hook/tree/main/examples".to_string(),
         },
         paths,
         definitions,
