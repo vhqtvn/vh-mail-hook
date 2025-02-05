@@ -105,6 +105,7 @@ GOOGLE_CLIENT_SECRET=your-google-client-secret
 
 # Telegram Login Widget
 TELEGRAM_BOT_TOKEN=your-telegram-bot-token
+TELEGRAM_BOT_NAME=your-telegram-bot-name
 
 # Application URL (for OAuth callbacks)
 APP_URL=http://localhost:3000
@@ -157,15 +158,12 @@ APP_URL=http://localhost:3000
    ```bash
    # Telegram Bot Configuration
    TELEGRAM_BOT_TOKEN=your_bot_token_from_botfather
-   ```
-
-4. Update the frontend environment file at `crates/web-app/frontend/.env`:
-   ```bash
-   VITE_TELEGRAM_BOT_NAME=your_bot_username
+   TELEGRAM_BOT_NAME=your_bot_username  # This will be injected into the frontend at runtime
    ```
 
 ### Frontend Development
 
+The frontend uses runtime configuration injected by the Rust backend. No frontend environment files are needed.
 To run the frontend in development mode, ensure you have Node.js and pnpm installed. Navigate to the frontend directory:
 
 ```bash
@@ -174,3 +172,5 @@ pnpm dev
 ```
 
 The development server typically runs on port 5173. 
+
+Note: When running in development mode, make sure the backend is also running as it provides the necessary runtime configuration. 

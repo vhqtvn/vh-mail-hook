@@ -7,6 +7,7 @@
   import GitHubLoginButton from '$lib/components/GitHubLoginButton.svelte';
   import { fade } from 'svelte/transition';
   import { elasticOut } from 'svelte/easing';
+  import { getTelegramBotName } from '$lib/config';
 
   let currentPassword = '';
   let newPassword = '';
@@ -18,6 +19,7 @@
   let hasPassword = false;
   let errorElement: HTMLElement;
   let shakeKey = 0;
+  let botName: string | undefined;
 
   interface ConnectedAccount {
     provider: string;
@@ -322,15 +324,15 @@
                 <h3 class="font-medium mb-2">Connect Telegram</h3>
                 <p class="text-sm opacity-70 mb-4">Link your Telegram account to enable notifications and quick access.</p>
               </div>
-              {#if import.meta.env.VITE_TELEGRAM_BOT_NAME}
+              {#if (botName = getTelegramBotName())}
                 <TelegramLoginWidget 
-                  botName={import.meta.env.VITE_TELEGRAM_BOT_NAME} 
+                  {botName}
                   action="connect"
                   onSuccess={handleTelegramConnect}
                 />
               {:else}
                 <div class="text-error text-sm text-center">
-                  Telegram login is not configured (VITE_TELEGRAM_BOT_NAME not set)
+                  Telegram login is not configured (TELEGRAM_BOT_NAME not set)
                 </div>
               {/if}
             </div>

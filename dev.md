@@ -80,6 +80,18 @@ pnpm dev
 
 The development server typically runs on port 5173.
 
+### Runtime Configuration
+The frontend application uses runtime configuration injected by the Rust backend. This means:
+1. Configuration values (like Telegram Bot Name, OAuth settings) are managed by the backend
+2. No frontend environment files are needed
+3. Configuration can be changed without rebuilding the frontend
+4. The backend must be running to provide the configuration
+
+When developing locally:
+1. Set environment variables in your backend environment (`.env` file or system environment)
+2. The backend will inject these values into the frontend at runtime
+3. Changes to environment variables take effect after restarting the backend server
+
 ## Key Features
 - **Security by Design:**
     - Emails are encrypted upon receipt

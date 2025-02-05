@@ -12,5 +12,11 @@ export default defineConfig({
 		allowedHosts: true,
 	},
 	// Look for .env files in the project root
-	envDir: '../../..'
+	envDir: '../../..',
+	// Ensure Vite processes these env vars
+	envPrefix: ['VITE_'],
+	define: {
+		// Explicitly define environment variables for production
+		'import.meta.env.VITE_TELEGRAM_BOT_NAME': JSON.stringify(process.env.VITE_TELEGRAM_BOT_NAME),
+	}
 });

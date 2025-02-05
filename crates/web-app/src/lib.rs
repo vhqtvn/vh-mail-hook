@@ -195,10 +195,30 @@ async fn static_handler(uri: axum::http::Uri, method: axum::http::Method) -> imp
 
     // If no static file is found, serve index.html for client-side routing
     match StaticAssets::get("index.html") {
-        Some(content) => Response::builder()
-            .header(header::CONTENT_TYPE, "text/html")
-            .body(axum::body::Body::from(content.data))
-            .unwrap(),
+        Some(content) => {
+            let html = String::from_utf8_lossy(&content.data);
+            
+            // Get configuration values
+            let telegram_bot_name = std::env::var("TELEGRAM_BOT_NAME").unwrap_or_default();
+            
+            // Create the runtime config script
+            let config_script = format!(
+                r#"<script>
+                    window.RUNTIME_CONFIG = {{
+                        TELEGRAM_BOT_NAME: "{}",
+                    }};
+                </script>"#,
+                telegram_bot_name
+            );
+            
+            // Replace the placeholder with the actual config
+            let html = html.replace("<!--RUNTIME_CONFIG_PLACEHOLDER-->", &config_script);
+            
+            Response::builder()
+                .header(header::CONTENT_TYPE, "text/html")
+                .body(axum::body::Body::from(html))
+                .unwrap()
+        }
         None => Response::builder()
             .status(StatusCode::NOT_FOUND)
             .body(axum::body::Body::from("404 Not Found"))
