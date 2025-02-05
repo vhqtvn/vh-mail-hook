@@ -6,8 +6,9 @@ use anyhow::Result;
 use common::{db::Database, AppError, Email};
 use dashmap::DashMap;
 use governor::{
-    state::{InMemoryState, NotKeyed},
+    state::{InMemoryState, NotKeyed, KeyedStateStore},
     Quota, RateLimiter,
+    clock::DefaultClock,
 };
 use ipnetwork::IpNetwork;
 use mail_parser::Message;
@@ -29,7 +30,7 @@ pub struct MailService {
     db: Arc<dyn Database>,
     blocked_networks: Vec<IpNetwork>,
     max_email_size: usize,
-    rate_limiter: Arc<RateLimiter<NotKeyed, InMemoryState, governor::clock::DefaultClock>>,
+    rate_limiter: Arc<RateLimiter<IpAddr, InMemoryState, DefaultClock>>,
     greylist: Arc<DashMap<(IpAddr, String, String), i64>>, // (IP, from, to) -> first_seen
     enable_greylisting: bool,
     greylist_delay: Duration,
@@ -41,7 +42,7 @@ pub struct MailService {
 
 impl MailService {
     pub async fn new(db: Arc<dyn Database>, config: ServiceConfig) -> Result<Self> {
-        let rate_limiter = Arc::new(RateLimiter::direct(Quota::per_hour(
+        let rate_limiter = Arc::new(RateLimiter::keyed(Quota::per_hour(
             std::num::NonZeroU32::new(config.rate_limit_per_hour).unwrap(),
         )));
 
@@ -66,7 +67,7 @@ impl MailService {
         config: ServiceConfig,
         dns_resolver: Arc<dyn DnsResolver>,
     ) -> Result<Self> {
-        let rate_limiter = Arc::new(RateLimiter::direct(Quota::per_hour(
+        let rate_limiter = Arc::new(RateLimiter::keyed(Quota::per_hour(
             std::num::NonZeroU32::new(config.rate_limit_per_hour).unwrap(),
         )));
 
@@ -86,7 +87,7 @@ impl MailService {
 
     #[cfg(any(test, feature = "test"))]
     pub async fn with_mock_resolver(db: Arc<dyn Database>, config: ServiceConfig, mx_records: Vec<String>) -> Result<Self> {
-        let rate_limiter = Arc::new(RateLimiter::direct(Quota::per_hour(
+        let rate_limiter = Arc::new(RateLimiter::keyed(Quota::per_hour(
             std::num::NonZeroU32::new(config.rate_limit_per_hour).unwrap(),
         )));
 
@@ -189,6 +190,10 @@ impl MailService {
             .await?
             .ok_or_else(|| AppError::Mail(format!("Mailbox not found: {}", recipient)))?;
 
+        if self.check_rate_limit(client_ip) {
+            return Err(AppError::Mail("Rate limit exceeded".to_string()));
+        }
+
         debug!("Mailbox found: {}", mailbox.id);
 
         trace!("Encrypting email content");
@@ -233,8 +238,8 @@ impl MailService {
         self.blocked_networks.iter().any(|net| net.contains(ip))
     }
 
-    pub fn check_rate_limit(&self, _ip: IpAddr) -> bool {
-        self.rate_limiter.check().is_ok()
+    pub fn check_rate_limit(&self, ip: IpAddr) -> bool {
+        self.rate_limiter.check_key(&ip).is_ok()
     }
 
     pub async fn cleanup_expired(&self) -> Result<(), AppError> {
