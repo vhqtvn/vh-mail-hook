@@ -201,16 +201,13 @@ fn extract_claims(req: &Request<Body>) -> Result<Option<Claims>, AppError> {
     
     match auth_header {
         Some(header) => {
-            if let Some(token) = header.strip_prefix("Bearer ") {
-                let claims = decode::<Claims>(
-                    token,
-                    &DecodingKey::from_secret(get_jwt_secret().as_bytes()),
-                    &Validation::default(),
-                ).map_err(|_| AppError::Auth("Invalid token".to_string()))?;
-                Ok(Some(claims.claims))
-            } else {
-                Err(AppError::Auth("Invalid authorization header format".to_string()))
-            }
+            let token = header.strip_prefix("Bearer ").unwrap_or(header);
+            let claims = decode::<Claims>(
+                token,
+                &DecodingKey::from_secret(get_jwt_secret().as_bytes()),
+                &Validation::default(),
+            ).map_err(|_| AppError::Auth("Invalid token".to_string()))?;
+            Ok(Some(claims.claims))
         }
         None => Ok(None),
     }
