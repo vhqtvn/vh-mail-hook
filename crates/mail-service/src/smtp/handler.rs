@@ -2,6 +2,8 @@ use crate::service::MailService;
 use mailin_embedded::{Handler, Response};
 use std::{io, net::IpAddr, sync::Arc};
 use tracing::{error, warn, debug};
+use tokio::runtime::Runtime;
+use std::sync::Mutex;
 
 #[derive(Clone)]
 pub struct SmtpHandler {
@@ -10,16 +12,21 @@ pub struct SmtpHandler {
     recipients: Vec<String>,
     current_sender: Option<String>,
     client_ip: IpAddr,
+    runtime: Arc<Mutex<Runtime>>,
 }
 
 impl SmtpHandler {
     pub fn new(service: Arc<MailService>) -> Self {
+        let runtime = Runtime::new()
+            .expect("Failed to create tokio runtime for SMTP handler");
+        
         Self {
             service,
             current_mail: Vec::new(),
             recipients: Vec::new(),
             current_sender: None,
             client_ip: "0.0.0.0".parse().unwrap(),
+            runtime: Arc::new(Mutex::new(runtime)),
         }
     }
 }
@@ -86,23 +93,45 @@ impl Handler for SmtpHandler {
         let sender = self.current_sender.clone().unwrap_or_default();
         let client_ip = self.client_ip;
 
-        // Spawn the task in the current tokio runtime
-        tokio::spawn(async move {
-            for recipient in recipients {
-                match service
-                    .process_incoming_email(&mail_data, &recipient, &sender, client_ip)
-                    .await
-                {
-                    Ok(_) => {
-                        debug!("Email processed successfully for {}", recipient);
+        // Use the shared runtime to process the email
+        match self.runtime.lock() {
+            Ok(rt) => {
+                // Process emails synchronously
+                match rt.block_on(async {
+                    let mut results = Vec::new();
+                    for recipient in recipients {
+                        let result = service
+                            .process_incoming_email(&mail_data, &recipient, &sender, client_ip)
+                            .await;
+                        results.push((recipient, result));
                     }
-                    Err(e) => {
-                        error!("Failed to process email for {}: {}", recipient, e);
+                    results
+                }) {
+                    results => {
+                        let mut all_succeeded = true;
+                        for (recipient, result) in results {
+                            match result {
+                                Ok(_) => {
+                                    debug!("Email processed successfully for {}", recipient);
+                                }
+                                Err(e) => {
+                                    error!("Failed to process email for {}: {}", recipient, e);
+                                    all_succeeded = false;
+                                }
+                            }
+                        }
+                        if all_succeeded {
+                            Response::custom(250, "OK".to_string())
+                        } else {
+                            Response::custom(451, "Failed to process email for some recipients".to_string())
+                        }
                     }
                 }
             }
-        });
-
-        Response::custom(250, "OK".to_string())
+            Err(e) => {
+                error!("Failed to acquire runtime lock for email processing: {}", e);
+                Response::custom(451, "Temporary local problem - please try later".to_string())
+            }
+        }
     }
 }
