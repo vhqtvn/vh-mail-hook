@@ -28,7 +28,7 @@ export async function validateAgePublicKey(key: string): Promise<boolean> {
 
 // this help inconsistence between dev and prod
 var __importDefault = function (mod: any) {
-  return (mod && mod.__esModule) ? mod : { "default": mod };
+  return Object.keys(mod).length === 1 && mod.default ? mod.default : mod;
 };
 
 export async function generateAgeKeyPair(): Promise<AgeKeyPair> {
