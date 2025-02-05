@@ -44,6 +44,37 @@ The project uses a workspace structure with the following crates:
 - `mail-service`: Email processing service
 - `web-app`: Web application and API
 
+## API Endpoints
+
+### Authentication
+- `POST /api/auth/register` - Register with username/password
+- `POST /api/auth/login` - Login with username/password
+- `GET /api/auth/github/login` - Start GitHub OAuth flow
+- `GET /api/auth/github/callback` - GitHub OAuth callback
+- `GET /api/auth/google/login` - Start Google OAuth flow
+- `GET /api/auth/google/callback` - Google OAuth callback
+- `POST /api/auth/telegram/verify` - Verify Telegram login widget data
+- `GET /api/auth/me` - Get current user info
+- `GET /api/auth/connected-accounts` - List connected authentication methods
+- `POST /api/auth/delete-account` - Delete user account
+- `POST /api/auth/set-password` - Set password for account
+- `POST /api/auth/telegram/disconnect` - Disconnect Telegram account
+- `POST /api/auth/google/disconnect` - Disconnect Google account
+- `POST /api/auth/github/disconnect` - Disconnect GitHub account
+
+### Mailboxes
+- `GET /api/mailboxes` - List all mailboxes for current user
+- `POST /api/mailboxes` - Create a new mailbox
+- `GET /api/mailboxes/:id` - Get mailbox details
+- `DELETE /api/mailboxes/:id` - Delete a mailbox
+- `PATCH /api/mailboxes/:id` - Update mailbox settings
+- `GET /api/mailboxes/:id/emails` - List emails in mailbox
+- `GET /api/mailboxes/:id/emails/:email_id` - Get email details
+- `DELETE /api/mailboxes/:id/emails/:email_id` - Delete an email
+
+### System
+- `GET /api/supported-domains` - List supported email domains
+
 ## License
 
 MIT License
@@ -133,21 +164,13 @@ APP_URL=http://localhost:3000
    VITE_TELEGRAM_BOT_NAME=your_bot_username
    ```
 
-### API Endpoints
-
-- `POST /auth/register` - Register with username/password
-- `POST /auth/login` - Login with username/password
-- `GET /auth/github/login` - Start GitHub OAuth flow
-- `GET /auth/google/login` - Start Google OAuth flow
-- `POST /auth/telegram/verify` - Verify Telegram login widget data
-
-All authentication methods return a JWT token that should be included in subsequent requests as a Bearer token in the Authorization header.
-
 ### Frontend Development
 
 To run the frontend in development mode, ensure you have Node.js and pnpm installed. Navigate to the frontend directory:
 
-  cd crates/web-app/frontend
-  pnpm dev
+```bash
+cd crates/web-app/frontend
+pnpm dev
+```
 
 The development server typically runs on port 5173. 
