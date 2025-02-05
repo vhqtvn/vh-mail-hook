@@ -190,7 +190,7 @@ impl MailService {
             .await?
             .ok_or_else(|| AppError::Mail(format!("Mailbox not found: {}", recipient)))?;
 
-        if self.check_rate_limit(client_ip) {
+        if !self.check_rate_limit(client_ip) {
             return Err(AppError::Mail("Rate limit exceeded".to_string()));
         }
 
