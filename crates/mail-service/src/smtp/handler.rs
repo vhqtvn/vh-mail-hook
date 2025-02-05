@@ -1,7 +1,7 @@
 use crate::service::MailService;
 use mailin_embedded::{Handler, Response};
 use std::{io, net::IpAddr, sync::Arc};
-use tracing::{error, warn};
+use tracing::{error, warn, debug};
 
 #[derive(Clone)]
 pub struct SmtpHandler {
@@ -86,15 +86,19 @@ impl Handler for SmtpHandler {
         let sender = self.current_sender.clone().unwrap_or_default();
         let client_ip = self.client_ip;
 
-        // Create a new runtime for handling the async task
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.spawn(async move {
+        // Spawn the task in the current tokio runtime
+        tokio::spawn(async move {
             for recipient in recipients {
-                if let Err(e) = service
+                match service
                     .process_incoming_email(&mail_data, &recipient, &sender, client_ip)
                     .await
                 {
-                    error!("Failed to process email for {}: {}", recipient, e);
+                    Ok(_) => {
+                        debug!("Email processed successfully for {}", recipient);
+                    }
+                    Err(e) => {
+                        error!("Failed to process email for {}: {}", recipient, e);
+                    }
                 }
             }
         });

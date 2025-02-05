@@ -12,7 +12,7 @@ use governor::{
 use ipnetwork::IpNetwork;
 use mail_parser::Message;
 use std::{net::IpAddr, sync::Arc, time::Duration};
-use tracing::{error, info, warn, debug};
+use tracing::{error, info, warn, debug, trace};
 
 #[derive(Clone)]
 pub struct ServiceConfig {
@@ -130,6 +130,7 @@ impl MailService {
 
         // Check greylisting if enabled
         if self.enable_greylisting {
+            trace!("Checking greylisting for {}", recipient);
             let key = (client_ip, sender.to_string(), recipient.to_string());
             let now = chrono::Utc::now().timestamp();
 
@@ -149,28 +150,39 @@ impl MailService {
             self.greylist.remove(&key);
         }
 
+        trace!("Parsing email content");
         // Parse email for validation and extraction
         let _parsed_email = Message::parse(raw_email)
             .ok_or_else(|| AppError::Mail("Failed to parse email".to_string()))?;
+        trace!("Email parsed successfully");
 
         // Validate SPF if enabled
         if self.enable_spf {
+            trace!("Checking SPF for sender: {}", sender);
             let spf_result = self.check_spf(sender, client_ip).await?;
             if !spf_result {
                 return Err(AppError::Mail("SPF validation failed".to_string()));
             }
+            trace!("SPF check passed");
+        } else {
+            warn!("SPF checking is temporarily disabled");
         }
 
         // Validate DKIM if enabled
         if self.enable_dkim {
+            trace!("Verifying DKIM signature");
             let dkim_result = self.verify_dkim(raw_email).await?;
             if !dkim_result {
                 return Err(AppError::Mail("DKIM validation failed".to_string()));
             }
+            trace!("DKIM verification passed");
+        } else {
+            warn!("DKIM verification is temporarily disabled");
         }
 
         debug!("Mailbox pre-validation passed");
 
+        trace!("Looking up mailbox in database");
         let mailbox = self
             .db
             .get_mailbox_by_address(local_part)
@@ -179,6 +191,7 @@ impl MailService {
 
         debug!("Mailbox found: {}", mailbox.id);
 
+        trace!("Encrypting email content");
         // Encrypt email content using age encryption
         let encrypted_content = encrypt_email(raw_email, &mailbox.public_key)?;
 
@@ -195,9 +208,11 @@ impl MailService {
 
         debug!("Email created");
 
+        trace!("Saving email to database");
         self.db.save_email(&email).await?;
 
         debug!("Email saved");
+        info!("Email processing completed successfully for recipient: {}", recipient);
 
         Ok(())
     }
