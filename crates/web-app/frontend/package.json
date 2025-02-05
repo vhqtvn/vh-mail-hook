@@ -41,9 +41,12 @@
 	},
 	"dependencies": {
 		"age-encryption": "^0.2.0",
+		"bech32": "^2.0.0",
 		"cookie": "0.6.0",
 		"daisyui": "^4.12.23",
 		"postcss": "^8.5.1",
-		"swagger-ui-dist": "^5.11.0"
+		"swagger-ui-dist": "^5.11.0",
+		"tweetnacl": "^1.0.3",
+		"tweetnacl-util": "^0.15.1"
 	}
 }

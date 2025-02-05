@@ -1,54 +1,47 @@
+// We'll use a dynamic import for bech32 since it's CommonJS
+import type { bech32 } from 'bech32';
+// TweetNaCl needs to be imported as a namespace
+import * as nacl from 'tweetnacl';
+
 export interface AgeKeyPair {
   publicKey: string;
   privateKey: string;
 }
 
-// Convert ArrayBuffer to Base64 URL-safe string
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
+// Convert Uint8Array to Base64 string
+function uint8ArrayToBase64(bytes: Uint8Array): string {
   let binary = '';
   for (let i = 0; i < bytes.byteLength; i++) {
     binary += String.fromCharCode(bytes[i]);
   }
-  return btoa(binary)
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=/g, '');
+  return btoa(binary);
 }
 
-export function validateAgePublicKey(key: string): boolean {
+export async function validateAgePublicKey(key: string): Promise<boolean> {
   try {
-    // The key should start with age1 and be the correct format
-    return key.startsWith('age1') && key.length === 63;
+    if (!key.startsWith('age1')) return false;
+    const bech32Module = await import('bech32');
+    const decoded = bech32Module.bech32.decode(key);
+    return decoded.prefix === 'age' && decoded.words.length === 32; // X25519 public key is 32 bytes
   } catch {
     return false;
   }
 }
 
 export async function generateAgeKeyPair(): Promise<AgeKeyPair> {
-  // Generate an X25519 key pair
-  const keyPair = await window.crypto.subtle.generateKey(
-    {
-      name: 'ECDH',
-      namedCurve: 'P-256'
-    },
-    true,
-    ['deriveKey', 'deriveBits']
-  );
-
-  // Export the keys
-  const publicKeyBuffer = await window.crypto.subtle.exportKey('raw', keyPair.publicKey);
-  const privateKeyBuffer = await window.crypto.subtle.exportKey('pkcs8', keyPair.privateKey);
-
-  // Convert to base64 and format as age keys
-  const publicKeyBase64 = arrayBufferToBase64(publicKeyBuffer);
-  const privateKeyBase64 = arrayBufferToBase64(privateKeyBuffer);
-
-  // Ensure the keys are the correct length
-  const publicKey = `age1${publicKeyBase64.slice(0, 59)}`;
-  const privateKey = `AGE-SECRET-KEY-1${privateKeyBase64.slice(0, 59)}`;
-
-  console.log('Generated key pair:', { publicKey, privateKey }); // Debug log
+  // Generate X25519 key pair using TweetNaCl
+  const keyPair = nacl.box.keyPair();
+  
+  const bech32Module = await import('bech32');
+  
+  // Convert public key to 5-bit words for bech32
+  const publicKeyWords = bech32Module.bech32.toWords(Array.from(keyPair.publicKey));
+  
+  // Encode public key in bech32 format with 'age' prefix
+  const publicKey = bech32Module.bech32.encode('age', publicKeyWords);
+  
+  const privateKeyWords = bech32Module.bech32.toWords(Array.from(keyPair.secretKey));  // const privateKey = `AGE-SECRET-KEY-1${privateKeyBase64}`;
+  const privateKey = bech32Module.bech32.encode('AGE-SECRET-KEY-', privateKeyWords).toLocaleUpperCase();
 
   return { publicKey, privateKey };
 } 
