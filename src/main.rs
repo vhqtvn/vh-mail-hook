@@ -20,6 +20,10 @@ pub struct Config {
     #[arg(long, env = "SMTP_BIND_ADDR", default_value = "127.0.0.1:2525")]
     pub smtp_bind_addr: String,
 
+    /// SMTP TLS server bind address
+    #[arg(long, env = "SMTP_TLS_BIND_ADDR", default_value = "127.0.0.1:465")]
+    pub smtp_tls_bind_addr: String,
+
     /// TLS certificate path (optional)
     #[arg(long, env = "TLS_CERT_PATH")]
     pub tls_cert_path: Option<std::path::PathBuf>,
@@ -93,6 +97,7 @@ async fn main() {
     let mail_config = mail_service::Config {
         database_path: config.database_path.clone(),
         smtp_bind_addr: config.smtp_bind_addr.clone(),
+        smtp_tls_bind_addr: config.smtp_tls_bind_addr.clone(),
         tls_cert_path: config.tls_cert_path,
         tls_key_path: config.tls_key_path,
         tls_chain_path: config.tls_chain_path,

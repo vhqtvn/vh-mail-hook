@@ -11,6 +11,10 @@ pub struct Config {
     #[arg(long, env = "SMTP_BIND_ADDR", default_value = "127.0.0.1:2525")]
     pub smtp_bind_addr: String,
 
+    /// SMTP TLS server bind address
+    #[arg(long, env = "SMTP_TLS_BIND_ADDR", default_value = "127.0.0.1:465")]
+    pub smtp_tls_bind_addr: String,
+
     /// TLS certificate file path (optional, enables TLS if provided)
     #[arg(long, env = "TLS_CERT_PATH")]
     pub tls_cert_path: Option<PathBuf>,
