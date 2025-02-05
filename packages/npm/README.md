@@ -5,15 +5,15 @@ A TypeScript client library for interacting with the VHMailHook service. This li
 ## Installation
 
 ```bash
-npm install vhmailhook
+npm install @vhmailhook/client
 # or
-yarn add vhmailhook
+yarn add @vhmailhook/client
 ```
 
 ## Usage
 
 ```typescript
-import { VHMailHookClient } from 'vhmailhook';
+import { VHMailHookClient } from '@vhmailhook/client';
 
 // Initialize the client
 const client = new VHMailHookClient({
