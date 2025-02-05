@@ -1,103 +1,87 @@
-# VHMailHook
+# VHMailHook - Developer Documentation
+
+This document serves as a guide for developers working on the VHMailHook project. It covers system components, API endpoints, frontend development, and key features.
 
 ## Components
 
-### MailService
-
-- Core service responsible for receiving and routing emails to the appropriate mailboxes.
-- Features:
-    - Parses and processes incoming emails.
-    - Encrypts emails using the mailbox's public key.
-    - Deletes expired emails based on their expiration settings (mailboxes don't expire).
+### Mail Service
+- Responsible for receiving, processing, and encrypting emails.
+- Key tasks:
+  - Parsing incoming emails.
+  - Encrypting emails using each mailbox's public key.
+  - Automatically deleting emails based on retention policies.
 
 ### Web Application
-Interface for users and admins to interact with the system.
+Provides the interface for both users and administrators.
+- **User Authentication:** Supports login via GitHub, Telegram, and password (with optional 2FA).
+- **Mailbox Management:**
+  - Create and delete secure mailboxes.
+  - Each mailbox is uniquely identified with a random string and secured with its own encryption key.
+- **Settings Management:**
+  - Update passwords.
+  - Generate or revoke API keys.
+- **Administration Interface:**
+  - Manage users, domains, and mailboxes.
+  - Configure integrations such as Google OAuth and Telegram authentication.
 
-- **User Authentication**
-    - Supports login via:
-        - GitHub
-        - Telegram
-        - Password-based login (with options for 2FA)
+## API Endpoints
 
-- **Authenticated User Features**
-    - **Mailbox Management:**
-        - Create/delete secure mailboxes
-        - Mailbox identification: A unique, random string appended to `@domain.com`
-        - Security: Each mailbox has:
-            - A secure public key for email encryption
-            - Configurable expiration for emails (mailboxes do not expire)
-    - **Settings Management:**
-        - Update password
-        - Generate or revoke API keys for automated mailbox interaction
+### Authentication
+- POST /api/auth/register — Register a new account.
+- POST /api/auth/login — Login with username and password.
+- GET /api/auth/github/login — Initiate GitHub OAuth flow.
+- GET /api/auth/github/callback — Handle GitHub OAuth callback.
+- GET /api/auth/google/login — Initiate Google OAuth flow.
+- GET /api/auth/google/callback — Handle Google OAuth callback.
+- POST /api/auth/telegram/verify — Verify Telegram login data.
+- GET /api/auth/me — Retrieve current user information.
+- GET /api/auth/connected-accounts — List connected authentication methods.
+- POST /api/auth/delete-account — Delete a user account.
+- POST /api/auth/set-password — Update account password.
+- POST /api/auth/telegram/disconnect — Disconnect Telegram integration.
+- POST /api/auth/google/disconnect — Disconnect Google integration.
+- POST /api/auth/github/disconnect — Disconnect GitHub integration.
 
-- **Admin Interface**
-    - Manage core system resources:
-        - Users
-        - Domains
-        - Mailboxes
-    - Configure integrations:
-        - Google OAuth
-        - Telegram Auth
+### Mailbox Management
+- GET /api/mailboxes — List all user mailboxes.
+- POST /api/mailboxes — Create a new mailbox.
+- GET /api/mailboxes/:id — Retrieve mailbox details.
+- DELETE /api/mailboxes/:id — Delete a mailbox.
+- PATCH /api/mailboxes/:id — Update mailbox settings.
+- GET /api/mailboxes/:id/emails — List emails in a mailbox.
+- GET /api/mailboxes/:id/emails/:email_id — Retrieve details of an email.
+- DELETE /api/mailboxes/:id/emails/:email_id — Delete an email.
 
-- **API Endpoints**
-    - **Authentication:**
-        - `POST /api/auth/register` - Register with username/password
-        - `POST /api/auth/login` - Login with username/password
-        - `GET /api/auth/github/login` - Start GitHub OAuth flow
-        - `GET /api/auth/github/callback` - GitHub OAuth callback
-        - `GET /api/auth/google/login` - Start Google OAuth flow
-        - `GET /api/auth/google/callback` - Google OAuth callback
-        - `POST /api/auth/telegram/verify` - Verify Telegram login widget data
-        - `GET /api/auth/me` - Get current user info
-        - `GET /api/auth/connected-accounts` - List connected authentication methods
-        - `POST /api/auth/delete-account` - Delete user account
-        - `POST /api/auth/set-password` - Set password for account
-        - `POST /api/auth/telegram/disconnect` - Disconnect Telegram account
-        - `POST /api/auth/google/disconnect` - Disconnect Google account
-        - `POST /api/auth/github/disconnect` - Disconnect GitHub account
-    
-    - **Mailbox Management:**
-        - `GET /api/mailboxes` - List all mailboxes for current user
-        - `POST /api/mailboxes` - Create a new mailbox
-        - `GET /api/mailboxes/:id` - Get mailbox details
-        - `DELETE /api/mailboxes/:id` - Delete a mailbox
-        - `PATCH /api/mailboxes/:id` - Update mailbox settings
-        - `GET /api/mailboxes/:id/emails` - List emails in mailbox
-        - `GET /api/mailboxes/:id/emails/:email_id` - Get email details
-        - `DELETE /api/mailboxes/:id/emails/:email_id` - Delete an email
-    
-    - **System:**
-        - `GET /api/supported-domains` - List supported email domains
+### System
+- GET /api/supported-domains — List supported email domains.
 
 ## Frontend Development
-To run the frontend in development mode, ensure that Node.js and pnpm are installed.
-Navigate to the frontend directory:
 
-```bash
-cd crates/web-app/frontend
-pnpm dev
-```
+For frontend development, ensure Node.js and pnpm are installed.
 
-The development server typically runs on port 5173.
-
-### Runtime Configuration
-The frontend application uses runtime configuration injected by the Rust backend. This means:
-1. Configuration values (like Telegram Bot Name, OAuth settings) are managed by the backend
-2. No frontend environment files are needed
-3. Configuration can be changed without rebuilding the frontend
-4. The backend must be running to provide the configuration
-
-When developing locally:
-1. Set environment variables in your backend environment (`.env` file or system environment)
-2. The backend will inject these values into the frontend at runtime
-3. Changes to environment variables take effect after restarting the backend server
+1. Navigate to the frontend directory:
+   ```bash
+   cd crates/web-app/frontend
+   pnpm dev
+   ```
+2. The development server typically runs on port 5173.
+3. The Rust backend injects runtime configuration values (e.g., OAuth settings, Telegram Bot Name) into the frontend, so ensure the backend is running when developing.
 
 ## Key Features
+
 - **Security by Design:**
-    - Emails are encrypted upon receipt
-    - Each mailbox has isolated and unique credentials
+  - All emails are encrypted upon receipt using robust encryption methods.
+  - Each mailbox utilizes its own public key for encryption.
+
 - **Resource Management:**
-    - Expiration policies for emails to ensure cleanup and efficient resource usage
-- **Flexibility:**
-    - Multiple authentication methods
-    - API for automation and advanced usage
+  - Automated email expiration and cleanup based on retention policies.
+
+- **Flexibility & Integration:**
+  - Supports multiple authentication methods, including 2FA.
+  - Provides a comprehensive API for seamless integration and automation.
+
+## Additional Notes
+
+- Database: The project uses SQLite as its primary database. Ensure SQLite3 and libsqlite3-dev are installed and configured as described in the README.
+
+This documentation is intended for developers contributing to VHMailHook. For further setup and configuration details, refer to the main README file.
