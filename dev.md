@@ -15,52 +15,77 @@ Interface for users and admins to interact with the system.
 
 - **User Authentication**
     - Supports login via:
-    - GitHub
-    - Telegram
-    - Password-based login (with options for 2FA).
+        - GitHub
+        - Telegram
+        - Password-based login (with options for 2FA)
 
 - **Authenticated User Features**
     - **Mailbox Management:**
-        - Create/delete secure mailboxes.
-        - Mailbox identification: A unique, random string appended to `@domain.com`.
+        - Create/delete secure mailboxes
+        - Mailbox identification: A unique, random string appended to `@domain.com`
         - Security: Each mailbox has:
-            - A secure public key for email encryption.
-            - Configurable expiration for emails (mailboxes do not expire).
+            - A secure public key for email encryption
+            - Configurable expiration for emails (mailboxes do not expire)
     - **Settings Management:**
-        - Update password.
-        - Generate or revoke API keys for automated mailbox interaction.
+        - Update password
+        - Generate or revoke API keys for automated mailbox interaction
 
 - **Admin Interface**
     - Manage core system resources:
-        - Users.
-        - Domains.
-        - Mailboxes.
+        - Users
+        - Domains
+        - Mailboxes
     - Configure integrations:
-        - Google OAuth.
-        - Telegram Auth.
+        - Google OAuth
+        - Telegram Auth
 
-- **API**
-    - Provides programmatic access to:
-        - Create/delete mailboxes.
-        - Read mailbox content.
-        - Long-polling for new emails in a mailbox.
-        - Delete individual emails from a mailbox.
+- **API Endpoints**
+    - **Authentication:**
+        - `POST /api/auth/register` - Register with username/password
+        - `POST /api/auth/login` - Login with username/password
+        - `GET /api/auth/github/login` - Start GitHub OAuth flow
+        - `GET /api/auth/github/callback` - GitHub OAuth callback
+        - `GET /api/auth/google/login` - Start Google OAuth flow
+        - `GET /api/auth/google/callback` - Google OAuth callback
+        - `POST /api/auth/telegram/verify` - Verify Telegram login widget data
+        - `GET /api/auth/me` - Get current user info
+        - `GET /api/auth/connected-accounts` - List connected authentication methods
+        - `POST /api/auth/delete-account` - Delete user account
+        - `POST /api/auth/set-password` - Set password for account
+        - `POST /api/auth/telegram/disconnect` - Disconnect Telegram account
+        - `POST /api/auth/google/disconnect` - Disconnect Google account
+        - `POST /api/auth/github/disconnect` - Disconnect GitHub account
+    
+    - **Mailbox Management:**
+        - `GET /api/mailboxes` - List all mailboxes for current user
+        - `POST /api/mailboxes` - Create a new mailbox
+        - `GET /api/mailboxes/:id` - Get mailbox details
+        - `DELETE /api/mailboxes/:id` - Delete a mailbox
+        - `PATCH /api/mailboxes/:id` - Update mailbox settings
+        - `GET /api/mailboxes/:id/emails` - List emails in mailbox
+        - `GET /api/mailboxes/:id/emails/:email_id` - Get email details
+        - `DELETE /api/mailboxes/:id/emails/:email_id` - Delete an email
+    
+    - **System:**
+        - `GET /api/supported-domains` - List supported email domains
 
 ## Frontend Development
 To run the frontend in development mode, ensure that Node.js and pnpm are installed.
 Navigate to the frontend directory:
 
-  cd crates/web-app/frontend
-  pnpm dev
+```bash
+cd crates/web-app/frontend
+pnpm dev
+```
 
 The development server typically runs on port 5173.
 
 ## Key Features
-- **Security by Design**:
-  - Emails are encrypted upon receipt.
-  - Each mailbox has isolated and unique credentials.
-- **Resource Management**:
-  - Expiration policies for emails to ensure cleanup and efficient resource usage.
-- **Flexibility**:
-  - Multiple authentication methods.
-  - API for automation and advanced usage.
+- **Security by Design:**
+    - Emails are encrypted upon receipt
+    - Each mailbox has isolated and unique credentials
+- **Resource Management:**
+    - Expiration policies for emails to ensure cleanup and efficient resource usage
+- **Flexibility:**
+    - Multiple authentication methods
+    - API for automation and advanced usage
