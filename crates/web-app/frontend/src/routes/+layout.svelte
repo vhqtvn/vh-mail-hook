@@ -66,6 +66,7 @@
 					</div>
 					<ul tabindex="-1" class="mt-2 z-[1] p-2 shadow-lg menu menu-sm dropdown-content rounded-lg w-52 bg-base-100 border border-base-200">
 						<li><a href="/settings" class="py-2 px-4 text-base-content hover:bg-base-200 rounded-lg">Settings</a></li>
+						<li><a href="/api-keys" class="py-2 px-4 text-base-content hover:bg-base-200 rounded-lg">API Keys</a></li>
 						<div class="divider my-1 opacity-10"></div>
 						<li><button on:click={handleLogout} class="py-2 px-4 text-error hover:bg-error/10 rounded-lg">Logout</button></li>
 					</ul>

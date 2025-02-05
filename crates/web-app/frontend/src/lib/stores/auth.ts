@@ -4,8 +4,9 @@ import { goto } from '$app/navigation';
 
 export interface User {
   id: string;
-  email: string;
-  created_at: string;
+  username: string;
+  auth_type: 'password' | 'github' | 'telegram' | 'google';
+  created_at: number;
 }
 
 function createAuthStore() {

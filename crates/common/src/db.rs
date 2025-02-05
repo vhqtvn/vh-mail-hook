@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use sqlx::{migrate::MigrateDatabase, sqlite::SqlitePool, Row, Sqlite};
 use std::{future::Future, sync::Arc};
 use tracing::info;
+use rand::{rngs::OsRng, Rng};
 
 #[async_trait]
 pub trait Database: Send + Sync {
@@ -392,10 +393,23 @@ impl Database for SqliteDatabase {
     }
 
     async fn create_api_key(&self, user_id: &str) -> Result<ApiKey, AppError> {
+        // Generate a secure random string of 32 characters using OsRng
+        let mut rng = OsRng;
+        let random_chars: String = (0..32)
+            .map(|_| {
+                let idx = rng.gen_range(0..62);
+                match idx {
+                    0..=9 => (b'0' + idx as u8) as char,
+                    10..=35 => (b'a' + (idx - 10) as u8) as char,
+                    _ => (b'A' + (idx - 36) as u8) as char,
+                }
+            })
+            .collect();
+
         let api_key = ApiKey {
             id: uuid::Uuid::new_v4().to_string(),
             user_id: user_id.to_string(),
-            key: uuid::Uuid::new_v4().to_string(),
+            key: format!("vhmhpk-{}", random_chars),
             created_at: chrono::Utc::now().timestamp(),
             expires_at: None,
         };

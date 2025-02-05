@@ -122,14 +122,8 @@ impl MailService {
         );
 
         // Extract local_part and domain from recipient
-        let (local_part, domain) = recipient.split_once('@')
+        let (local_part, _domain) = recipient.split_once('@')
             .ok_or_else(|| AppError::Mail("Invalid recipient address format".to_string()))?;
-
-        // Check if domain has valid MX records
-        let mx_records = self.dns_resolver.mx_lookup(domain).await?;
-        if mx_records.is_empty() {
-            return Err(AppError::Mail("No MX records found for domain".to_string()));
-        }
 
         // Check greylisting if enabled
         if self.enable_greylisting {

@@ -12,6 +12,7 @@ use clap::Parser;
 use tokio::net::TcpListener;
 use rust_embed::RustEmbed;
 use std::sync::OnceLock;
+use sqlx::Row;
 
 mod auth;
 use auth::Claims;
@@ -118,6 +119,14 @@ pub struct UpdateMailboxRequest {
     expires_in_seconds: Option<i64>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct ApiKey {
+    pub id: String,
+    pub key: String,
+    pub created_at: i64,
+    pub expires_at: Option<i64>,
+}
+
 pub async fn run(config: Config) -> anyhow::Result<()> {
     init_config(config.clone());
 
@@ -160,6 +169,9 @@ pub fn create_app<D: Database + 'static>(
         .route("/api/mailboxes/:id/emails/:email_id", get(get_email::<D>))
         .route("/api/mailboxes/:id/emails/:email_id", delete(delete_email::<D>))
         .route("/api/supported-domains", get(get_supported_domains::<D>))
+        .route("/api/api-keys", get(list_api_keys::<D>))
+        .route("/api/api-keys", post(create_api_key::<D>))
+        .route("/api/api-keys/:id", delete(delete_api_key::<D>))
         .layer(middleware::from_fn(handle_json_response));
 
     Router::new()
@@ -481,6 +493,82 @@ async fn get_supported_domains<D: Database>(
         .clone();
     
     Ok(Json(ApiResponse::success(SupportedDomainsResponse { domains })))
+}
+
+async fn list_api_keys<D: Database>(
+    State(state): State<Arc<AppState<D>>>,
+    claims: axum::extract::Extension<Claims>,
+) -> Result<Json<ApiResponse<Vec<ApiKey>>>, StatusCode> {
+    let rows = sqlx::query(
+        "SELECT id, key, created_at, expires_at FROM api_keys WHERE user_id = ?"
+    )
+    .bind(&claims.sub)
+    .fetch_all(state.db.pool())
+    .await
+    .map_err(|e| {
+        error!("Database error while listing API keys: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let api_keys = rows.iter().map(|row| ApiKey {
+        id: row.get("id"),
+        key: row.get("key"),
+        created_at: row.get("created_at"),
+        expires_at: row.get("expires_at"),
+    }).collect();
+
+    Ok(Json(ApiResponse::success(api_keys)))
+}
+
+async fn create_api_key<D: Database>(
+    State(state): State<Arc<AppState<D>>>,
+    claims: axum::extract::Extension<Claims>,
+) -> Result<Json<ApiResponse<ApiKey>>, StatusCode> {
+    let api_key = state.db.create_api_key(&claims.sub)
+        .await
+        .map_err(|e| {
+            error!("Database error while creating API key: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(ApiResponse::success(ApiKey {
+        id: api_key.id,
+        key: api_key.key,
+        created_at: api_key.created_at,
+        expires_at: api_key.expires_at,
+    })))
+}
+
+async fn delete_api_key<D: Database>(
+    State(state): State<Arc<AppState<D>>>,
+    claims: axum::extract::Extension<Claims>,
+    Path(key_id): Path<String>,
+) -> Result<Json<ApiResponse<()>>, StatusCode> {
+    // First verify the API key belongs to the user
+    let user_id: Option<String> = sqlx::query_scalar(
+        "SELECT user_id FROM api_keys WHERE id = ?"
+    )
+    .bind(&key_id)
+    .fetch_optional(state.db.pool())
+    .await
+    .map_err(|e| {
+        error!("Database error while verifying API key ownership: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    match user_id {
+        Some(id) if id == claims.sub => {
+            state.db.delete_api_key(&key_id)
+                .await
+                .map_err(|e| {
+                    error!("Database error while deleting API key: {}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
+            Ok(Json(ApiResponse::success(())))
+        }
+        Some(_) => Ok(Json(ApiResponse::error("You don't have permission to delete this API key"))),
+        None => Ok(Json(ApiResponse::error("API key not found"))),
+    }
 }
 
 // Re-export auth types for public use

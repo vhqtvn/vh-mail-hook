@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { get, post } from '$lib/api';
+  import { get, post, type ApiKey, listApiKeys, createApiKey, deleteApiKey } from '$lib/api';
   import ErrorAlert from '$lib/components/ErrorAlert.svelte';
   import TelegramLoginWidget from '$lib/components/TelegramLoginWidget.svelte';
   import GoogleLoginButton from '$lib/components/GoogleLoginButton.svelte';
@@ -29,6 +29,9 @@
   let connectedAccounts: ConnectedAccount[] = [];
   let loadingAccounts = true;
 
+  let apiKeys: ApiKey[] = [];
+  let loadingApiKeys = true;
+
   async function fetchConnectedAccounts() {
     try {
       const response = await get<ConnectedAccount[]>('/api/auth/connected-accounts');
@@ -41,7 +44,21 @@
     }
   }
 
-  onMount(fetchConnectedAccounts);
+  async function fetchApiKeys() {
+    try {
+      const response = await listApiKeys();
+      apiKeys = response.data || [];
+    } catch (e) {
+      error = e;
+    } finally {
+      loadingApiKeys = false;
+    }
+  }
+
+  onMount(() => {
+    fetchConnectedAccounts();
+    fetchApiKeys();
+  });
 
   async function handleTelegramConnect() {
     await fetchConnectedAccounts();
@@ -167,6 +184,32 @@
       await post('/api/auth/github/disconnect', {});
       await fetchConnectedAccounts();
       success = 'GitHub account disconnected successfully';
+    } catch (e) {
+      error = e;
+    }
+  }
+
+  async function handleCreateApiKey() {
+    try {
+      const response = await createApiKey();
+      if (response.data) {
+        apiKeys = [...apiKeys, response.data];
+        success = 'API key created successfully';
+      }
+    } catch (e) {
+      error = e;
+    }
+  }
+
+  async function handleDeleteApiKey(keyId: string) {
+    if (!confirm('Are you sure you want to delete this API key? Any applications using it will stop working.')) {
+      return;
+    }
+
+    try {
+      await deleteApiKey(keyId);
+      apiKeys = apiKeys.filter(key => key.id !== keyId);
+      success = 'API key deleted successfully';
     } catch (e) {
       error = e;
     }

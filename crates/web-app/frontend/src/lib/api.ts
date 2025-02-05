@@ -148,4 +148,23 @@ export async function post<T = any>(endpoint: string, data: any, options: FetchO
 
 export async function del<T = any>(endpoint: string, options: FetchOptions = {}): Promise<ApiResponse<T>> {
   return fetchApi<T>(endpoint, { ...options, method: 'DELETE' });
+}
+
+export interface ApiKey {
+  id: string;
+  key: string;
+  created_at: number;
+  expires_at: number | null;
+}
+
+export async function listApiKeys(): Promise<ApiResponse<ApiKey[]>> {
+  return get<ApiKey[]>('/api/api-keys');
+}
+
+export async function createApiKey(): Promise<ApiResponse<ApiKey>> {
+  return post<ApiKey>('/api/api-keys', {});
+}
+
+export async function deleteApiKey(keyId: string): Promise<ApiResponse<void>> {
+  return del<void>(`/api/api-keys/${keyId}`);
 } 
