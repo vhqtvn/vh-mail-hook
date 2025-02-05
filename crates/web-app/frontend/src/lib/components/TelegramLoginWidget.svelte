@@ -3,9 +3,10 @@
   import { auth } from '$lib/stores/auth';
   import { post } from '$lib/api';
   import type { TelegramUser } from '$lib/types/telegram';
+  import { getTelegramBotName } from '$lib/config';
 
   export let size: 'large' | 'medium' | 'small' = 'large';
-  export let botName: string;
+  export let botName: string | undefined = undefined;
   export let showUserPic = true;
   export let cornerRadius = 20;
   export let requestAccess = 'write';
@@ -15,9 +16,15 @@
 
   let widgetContainer: HTMLDivElement;
   let error: string | null = null;
+  let actualBotName = botName || getTelegramBotName();
 
   onMount(() => {
-    console.log('TelegramLoginWidget mounted, botName:', botName);
+    if (!actualBotName) {
+      console.error('TelegramLoginWidget: No bot name provided and TELEGRAM_BOT_NAME not set in runtime config');
+      onError('Telegram login is not configured (TELEGRAM_BOT_NAME not set)');
+      return;
+    }
+    console.log('TelegramLoginWidget mounted, botName:', actualBotName);
 
     // Create the global callback
     (window as any).onTelegramAuth = async (user: TelegramUser) => {
@@ -61,7 +68,7 @@
     const script = document.createElement('script');
     script.async = true;
     script.src = 'https://telegram.org/js/telegram-widget.js?22';
-    script.dataset.telegramLogin = botName;
+    script.dataset.telegramLogin = actualBotName;
     script.dataset.size = size;
     script.dataset.userpic = showUserPic.toString();
     script.dataset.radius = cornerRadius.toString();

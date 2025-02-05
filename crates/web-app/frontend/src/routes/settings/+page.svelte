@@ -324,17 +324,11 @@
                 <h3 class="font-medium mb-2">Connect Telegram</h3>
                 <p class="text-sm opacity-70 mb-4">Link your Telegram account to enable notifications and quick access.</p>
               </div>
-              {#if (botName = getTelegramBotName())}
-                <TelegramLoginWidget 
-                  {botName}
-                  action="connect"
-                  onSuccess={handleTelegramConnect}
-                />
-              {:else}
-                <div class="text-error text-sm text-center">
-                  Telegram login is not configured (TELEGRAM_BOT_NAME not set)
-                </div>
-              {/if}
+              <TelegramLoginWidget 
+                action="connect"
+                onSuccess={handleTelegramConnect}
+                onError={(e) => error = e}
+              />
             </div>
           {/if}
 

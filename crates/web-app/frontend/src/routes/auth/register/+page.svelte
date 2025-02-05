@@ -102,9 +102,12 @@
   <div class="divider">OR</div>
 
   <div class="space-y-4">
+    <TelegramLoginWidget 
+      action="register"
+      onError={(e) => error = e} 
+    />
     <GoogleLoginButton action="register" onError={(e) => error = e} />
     <GitHubLoginButton action="register" onError={(e) => error = e} />
-    <TelegramLoginWidget onError={(e) => error = e} />
   </div>
 
   <p class="text-center mt-4">

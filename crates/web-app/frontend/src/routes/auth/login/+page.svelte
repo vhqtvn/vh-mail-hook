@@ -8,7 +8,6 @@
   import GitHubLoginButton from '$lib/components/GitHubLoginButton.svelte';
   import { getTelegramBotName } from '$lib/config';
 
-  const botName = getTelegramBotName();
   let username = '';
   let password = '';
   let loading = false;
@@ -82,18 +81,10 @@
   <div class="divider">OR</div>
 
   <div class="space-y-4">
-    {#if botName}
-      <TelegramLoginWidget 
-        botName={botName} 
-        action="login"
-        onError={(e) => error = e}
-      />
-    {:else}
-      <div class="text-error text-sm text-center">
-        Telegram login is not configured (TELEGRAM_BOT_NAME not set)
-      </div>
-    {/if}
-
+    <TelegramLoginWidget 
+      action="login"
+      onError={(e) => error = e}
+    />
     <GoogleLoginButton action="login" onError={(e) => error = e} />
     <GitHubLoginButton action="login" onError={(e) => error = e} />
   </div>

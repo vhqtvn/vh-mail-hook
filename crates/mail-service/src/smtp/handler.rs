@@ -86,7 +86,9 @@ impl Handler for SmtpHandler {
         let sender = self.current_sender.clone().unwrap_or_default();
         let client_ip = self.client_ip;
 
-        tokio::spawn(async move {
+        // Create a new runtime for handling the async task
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.spawn(async move {
             for recipient in recipients {
                 if let Err(e) = service
                     .process_incoming_email(&mail_data, &recipient, &sender, client_ip)
