@@ -1,3 +1,5 @@
+> **Note**: This entire project, including all code, documentation, and configuration, is 100% AI-generated.
+
 # VHMailHook
 
 A secure email handling system with temporary mailboxes and encryption.
