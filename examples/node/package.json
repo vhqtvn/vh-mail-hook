@@ -1,15 +1,20 @@
 {
-  "name": "test",
+  "name": "vhmailhook-examples",
   "version": "1.0.0",
-  "main": "read-email.js",
+  "description": "Example code for using VHMailHook API",
   "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node read-email.js",
+    "test": "node test.sh"
   },
-  "author": "",
-  "license": "ISC",
-  "description": "",
   "dependencies": {
-    "age-encryption": "^0.2.0"
-  }
+    "age-encryption": "^0.1.5",
+    "dotenv": "^16.0.3"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "private": true,
+  "author": "VHMailHook Contributors",
+  "license": "MIT"
 }
