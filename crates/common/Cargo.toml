@@ -16,6 +16,7 @@ async-trait = "0.1"
 sqlx = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
+once_cell = { workspace = true }
 age = { version = "0.9", features = ["armor"] }
 base64 = "0.21"
 axum = { version = "0.7", features = ["macros"] }

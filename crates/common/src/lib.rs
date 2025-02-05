@@ -10,6 +10,7 @@ use axum::body::Body;
 
 pub mod db;
 pub mod security;
+pub mod rate_limit;
 
 // 24 characters chosen to be visually distinct
 const ID_CHARSET: &[u8] = b"3479acdefhjkmnpqrstuvwxy";
