@@ -22,6 +22,8 @@
 		"@tailwindcss/container-queries": "^0.1.1",
 		"@tailwindcss/forms": "^0.5.10",
 		"@tailwindcss/typography": "^0.5.16",
+		"@types/node": "^20.11.30",
+		"@types/swagger-ui-dist": "^3.30.4",
 		"autoprefixer": "^10.4.20",
 		"eslint": "^9.19.0",
 		"eslint-config-prettier": "^10.0.1",
@@ -40,6 +42,7 @@
 	"dependencies": {
 		"age-encryption": "^0.2.0",
 		"daisyui": "^4.12.23",
-		"postcss": "^8.5.1"
+		"postcss": "^8.5.1",
+		"swagger-ui-dist": "^5.11.0"
 	}
 }

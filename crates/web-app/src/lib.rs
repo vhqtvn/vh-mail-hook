@@ -15,7 +15,64 @@ use std::sync::OnceLock;
 use sqlx::Row;
 
 mod auth;
+mod api_spec;
 use auth::Claims;
+
+mod api_auth {
+    use axum::{
+        async_trait,
+        extract::FromRequestParts,
+        http::{request::Parts, StatusCode},
+        response::{IntoResponse, Response},
+    };
+    use serde::Serialize;
+    use crate::{AppState, Database};
+    use std::sync::Arc;
+
+    #[derive(Debug, Serialize)]
+    pub struct ApiClaims {
+        pub user_id: String,
+    }
+
+    #[async_trait]
+    impl<D> FromRequestParts<Arc<AppState<D>>> for ApiClaims
+    where
+        D: Database + Send + Sync + 'static,
+    {
+        type Rejection = Response;
+
+        async fn from_request_parts(
+            parts: &mut Parts,
+            state: &Arc<AppState<D>>,
+        ) -> Result<Self, Self::Rejection> {
+            // Get the Authorization header
+            let auth_header = parts
+                .headers
+                .get("Authorization")
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.strip_prefix("Bearer "))
+                .ok_or_else(|| {
+                    (StatusCode::UNAUTHORIZED, "Missing or invalid Authorization header").into_response()
+                })?;
+
+            // Query the database to find the user associated with this API key
+            let user_id: Option<String> = sqlx::query_scalar(
+                "SELECT user_id FROM api_keys WHERE key = ? AND (expires_at IS NULL OR expires_at > unixepoch())"
+            )
+            .bind(auth_header)
+            .fetch_optional(state.db.pool())
+            .await
+            .map_err(|e| {
+                (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)).into_response()
+            })?;
+
+            match user_id {
+                Some(user_id) => Ok(ApiClaims { user_id }),
+                None => Err((StatusCode::UNAUTHORIZED, "Invalid API key").into_response()),
+            }
+        }
+    }
+}
 
 #[derive(RustEmbed)]
 #[folder = "static"]
@@ -159,7 +216,7 @@ pub fn create_app<D: Database + 'static>(
         .allow_headers(Any);
 
     // Create a router for protected mailbox routes
-    let mailbox_routes = Router::new()
+    let frontend_routes = Router::new()
         .route("/api/mailboxes", get(list_mailboxes::<D>))
         .route("/api/mailboxes", post(create_mailbox::<D>))
         .route("/api/mailboxes/:id", get(get_mailbox::<D>))
@@ -174,9 +231,17 @@ pub fn create_app<D: Database + 'static>(
         .route("/api/api-keys/:id", delete(delete_api_key::<D>))
         .layer(middleware::from_fn(handle_json_response));
 
+    let api_routes = Router::new()
+        .route("/v1/mailboxes/:id/emails", get(api_get_mailbox_emails::<D>))
+        .route("/v1/mailboxes/:id/emails/:email_id", get(api_get_email::<D>))
+        .route("/v1/mailboxes/:id/emails/:email_id", delete(api_delete_email::<D>))
+        .route("/v1/swagger-spec.json", get(serve_swagger_spec))
+        .layer(middleware::from_fn(handle_json_response));
+
     Router::new()
         .merge(auth::create_routes::<D>())
-        .nest("/", mailbox_routes.layer(middleware::from_fn(auth::auth)).layer(middleware::from_fn(handle_json_response)))
+        .nest("/", frontend_routes.layer(middleware::from_fn(auth::auth)))
+        .nest("/api", api_routes)   
         .fallback(static_handler)
         .layer(cors)
         .with_state(state)
@@ -192,6 +257,20 @@ async fn static_handler(uri: axum::http::Uri, method: axum::http::Method) -> imp
     }
 
     let path = uri.path().trim_start_matches('/');
+    
+    // Special case for API documentation
+    if path == "api/docs" {
+        return match StaticAssets::get("swagger.html") {
+            Some(content) => Response::builder()
+                .header(header::CONTENT_TYPE, "text/html")
+                .body(axum::body::Body::from(content.data))
+                .unwrap(),
+            None => Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(axum::body::Body::from("404 Not Found"))
+                .unwrap(),
+        };
+    }
     
     // Don't try to serve static files for API routes
     if path.starts_with("api/") {
@@ -372,31 +451,58 @@ async fn update_mailbox<D: Database>(
     }
 }
 
+async fn get_mailbox_emails_for_user<D: Database>(
+    state: &Arc<AppState<D>>,
+    user_id: &str,
+    mailbox_id: &str,
+) -> Result<Vec<Email>, AppError> {
+    // First check if the mailbox belongs to the user
+    let mailbox = state.db.get_mailbox(mailbox_id).await?
+        .ok_or_else(|| AppError::NotFound("Mailbox not found".into()))?;
+
+    if mailbox.owner_id != user_id {
+        return Err(AppError::Auth("You do not have permission to access emails from this mailbox".into()));
+    }
+
+    state.db.get_mailbox_emails(mailbox_id).await
+}
+
 async fn get_mailbox_emails<D: Database>(
     State(state): State<Arc<AppState<D>>>,
     claims: axum::extract::Extension<Claims>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<Email>>>, StatusCode> {
-    // First check if the mailbox belongs to the authenticated user
-    match state.db.get_mailbox(&id).await {
-        Ok(Some(mailbox)) => {
-            if mailbox.owner_id != claims.sub {
-                return Ok(Json(ApiResponse::error("You do not have permission to access emails from this mailbox")));
-            }
-            match state.db.get_mailbox_emails(&id).await {
-                Ok(emails) => Ok(Json(ApiResponse::success(emails))),
-                Err(e) => {
-                    error!("Database error while retrieving emails: {}", e);
-                    Ok(Json(ApiResponse::error("Unable to retrieve emails. Please try again later")))
-                }
-            }
-        }
-        Ok(None) => Ok(Json(ApiResponse::error("Mailbox not found"))),
+    match get_mailbox_emails_for_user(&state, &claims.sub, &id).await {
+        Ok(emails) => Ok(Json(ApiResponse::success(emails))),
         Err(e) => {
-            error!("Database error while checking mailbox: {}", e);
-            Ok(Json(ApiResponse::error("Unable to process request. Please try again later")))
+            error!("Error while retrieving emails: {}", e);
+            Ok(Json(ApiResponse::error(e.to_string())))
         }
     }
+}
+
+async fn get_email_for_user<D: Database>(
+    state: &Arc<AppState<D>>,
+    user_id: &str,
+    mailbox_id: &str,
+    email_id: &str,
+) -> Result<Email, AppError> {
+    // First check if the mailbox belongs to the user
+    let mailbox = state.db.get_mailbox(mailbox_id).await?
+        .ok_or_else(|| AppError::NotFound("Mailbox not found".into()))?;
+
+    if mailbox.owner_id != user_id {
+        return Err(AppError::Auth("You do not have permission to access this email".into()));
+    }
+
+    let email = state.db.get_email(email_id).await?
+        .ok_or_else(|| AppError::NotFound("Email not found".into()))?;
+
+    if email.mailbox_id != mailbox_id {
+        return Err(AppError::NotFound("Email not found in this mailbox".into()));
+    }
+
+    Ok(email)
 }
 
 async fn get_email<D: Database>(
@@ -404,32 +510,37 @@ async fn get_email<D: Database>(
     claims: axum::extract::Extension<Claims>,
     Path((mailbox_id, email_id)): Path<(String, String)>,
 ) -> Result<Json<ApiResponse<Email>>, StatusCode> {
-    // First check if the mailbox belongs to the authenticated user
-    match state.db.get_mailbox(&mailbox_id).await {
-        Ok(Some(mailbox)) => {
-            if mailbox.owner_id != claims.sub {
-                return Ok(Json(ApiResponse::error("You do not have permission to access this email")));
-            }
-            match state.db.get_email(&email_id).await {
-                Ok(Some(email)) => {
-                    if email.mailbox_id != mailbox_id {
-                        return Ok(Json(ApiResponse::error("Email not found in this mailbox")));
-                    }
-                    Ok(Json(ApiResponse::success(email)))
-                }
-                Ok(None) => Ok(Json(ApiResponse::error("Email not found"))),
-                Err(e) => {
-                    error!("Database error while retrieving email: {}", e);
-                    Ok(Json(ApiResponse::error("Unable to retrieve email. Please try again later")))
-                }
-            }
-        }
-        Ok(None) => Ok(Json(ApiResponse::error("Mailbox not found"))),
+    match get_email_for_user(&state, &claims.sub, &mailbox_id, &email_id).await {
+        Ok(email) => Ok(Json(ApiResponse::success(email))),
         Err(e) => {
-            error!("Database error while checking mailbox: {}", e);
-            Ok(Json(ApiResponse::error("Unable to process request. Please try again later")))
+            error!("Error while retrieving email: {}", e);
+            Ok(Json(ApiResponse::error(e.to_string())))
         }
     }
+}
+
+async fn delete_email_for_user<D: Database>(
+    state: &Arc<AppState<D>>,
+    user_id: &str,
+    mailbox_id: &str,
+    email_id: &str,
+) -> Result<(), AppError> {
+    // First check if the mailbox belongs to the user
+    let mailbox = state.db.get_mailbox(mailbox_id).await?
+        .ok_or_else(|| AppError::NotFound("Mailbox not found".into()))?;
+
+    if mailbox.owner_id != user_id {
+        return Err(AppError::Auth("You do not have permission to delete this email".into()));
+    }
+
+    let email = state.db.get_email(email_id).await?
+        .ok_or_else(|| AppError::NotFound("Email not found".into()))?;
+
+    if email.mailbox_id != mailbox_id {
+        return Err(AppError::NotFound("Email not found in this mailbox".into()));
+    }
+
+    state.db.delete_email(email_id).await
 }
 
 async fn delete_email<D: Database>(
@@ -437,36 +548,11 @@ async fn delete_email<D: Database>(
     claims: axum::extract::Extension<Claims>,
     Path((mailbox_id, email_id)): Path<(String, String)>,
 ) -> Result<Json<ApiResponse<()>>, StatusCode> {
-    // First check if the mailbox belongs to the authenticated user
-    match state.db.get_mailbox(&mailbox_id).await {
-        Ok(Some(mailbox)) => {
-            if mailbox.owner_id != claims.sub {
-                return Ok(Json(ApiResponse::error("You do not have permission to delete this email")));
-            }
-            match state.db.get_email(&email_id).await {
-                Ok(Some(email)) => {
-                    if email.mailbox_id != mailbox_id {
-                        return Ok(Json(ApiResponse::error("Email not found in this mailbox")));
-                    }
-                    match state.db.delete_email(&email_id).await {
-                        Ok(_) => Ok(Json(ApiResponse::success(()))),
-                        Err(e) => {
-                            error!("Database error while deleting email: {}", e);
-                            Ok(Json(ApiResponse::error("Unable to delete email. Please try again later")))
-                        }
-                    }
-                }
-                Ok(None) => Ok(Json(ApiResponse::error("Email not found"))),
-                Err(e) => {
-                    error!("Database error while checking email: {}", e);
-                    Ok(Json(ApiResponse::error("Unable to process request. Please try again later")))
-                }
-            }
-        }
-        Ok(None) => Ok(Json(ApiResponse::error("Mailbox not found"))),
+    match delete_email_for_user(&state, &claims.sub, &mailbox_id, &email_id).await {
+        Ok(_) => Ok(Json(ApiResponse::success(()))),
         Err(e) => {
-            error!("Database error while checking mailbox: {}", e);
-            Ok(Json(ApiResponse::error("Unable to process request. Please try again later")))
+            error!("Error while deleting email: {}", e);
+            Ok(Json(ApiResponse::error(e.to_string())))
         }
     }
 }
@@ -571,5 +657,159 @@ async fn delete_api_key<D: Database>(
     }
 }
 
+// @APIDOC-START
+/// Get emails from a mailbox
+/// 
+/// Lists all emails in the specified mailbox. Requires API authentication.
+/// 
+/// Authorization:
+/// - Requires a valid API key in the Authorization header
+/// - Format: `Authorization: Bearer <api-key>`
+/// 
+/// Parameters:
+/// - `id`: The ID of the mailbox to retrieve emails from
+/// 
+/// Returns:
+/// - 200: List of emails in the mailbox
+/// - 401: Missing or invalid API key
+/// - 403: API key owner doesn't have access to the mailbox
+/// - 404: Mailbox not found
+/// 
+/// Example response:
+/// ```json
+/// {
+///   "success": true,
+///   "data": [
+///     {
+///       "id": "string",
+///       "mailbox_id": "string",
+///       "subject": "string",
+///       "from": "string",
+///       "to": "string",
+///       "content": "string",
+///       "received_at": 1234567890
+///     }
+///   ]
+/// }
+/// ```
+async fn api_get_mailbox_emails<D>(
+    State(state): State<Arc<AppState<D>>>,
+    api_claims: api_auth::ApiClaims,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<Vec<Email>>>, StatusCode>
+where
+    D: Database + Send + Sync + 'static,
+{
+    match get_mailbox_emails_for_user(&state, &api_claims.user_id, &id).await {
+        Ok(emails) => Ok(Json(ApiResponse::success(emails))),
+        Err(e) => {
+            error!("API error while retrieving emails: {}", e);
+            Ok(Json(ApiResponse::error(e.to_string())))
+        }
+    }
+}
+
+// @APIDOC-START
+/// Get a specific email from a mailbox
+/// 
+/// Retrieves a single email by its ID from the specified mailbox. Requires API authentication.
+/// 
+/// Authorization:
+/// - Requires a valid API key in the Authorization header
+/// - Format: `Authorization: Bearer <api-key>`
+/// 
+/// Parameters:
+/// - `mailbox_id`: The ID of the mailbox containing the email
+/// - `email_id`: The ID of the email to retrieve
+/// 
+/// Returns:
+/// - 200: The requested email
+/// - 401: Missing or invalid API key
+/// - 403: API key owner doesn't have access to the mailbox
+/// - 404: Mailbox or email not found
+/// 
+/// Example response:
+/// ```json
+/// {
+///   "success": true,
+///   "data": {
+///     "id": "string",
+///     "mailbox_id": "string",
+///     "subject": "string",
+///     "from": "string",
+///     "to": "string",
+///     "content": "string",
+///     "received_at": 1234567890
+///   }
+/// }
+/// ```
+async fn api_get_email<D>(
+    State(state): State<Arc<AppState<D>>>,
+    api_claims: api_auth::ApiClaims,
+    Path((mailbox_id, email_id)): Path<(String, String)>,
+) -> Result<Json<ApiResponse<Email>>, StatusCode>
+where
+    D: Database + Send + Sync + 'static,
+{
+    match get_email_for_user(&state, &api_claims.user_id, &mailbox_id, &email_id).await {
+        Ok(email) => Ok(Json(ApiResponse::success(email))),
+        Err(e) => {
+            error!("API error while retrieving email: {}", e);
+            Ok(Json(ApiResponse::error(e.to_string())))
+        }
+    }
+}
+
+// @APIDOC-START
+/// Delete an email from a mailbox
+/// 
+/// Permanently deletes a single email from the specified mailbox. 
+/// This operation cannot be undone. Requires API authentication.
+/// 
+/// Authorization:
+/// - Requires a valid API key in the Authorization header
+/// - Format: `Authorization: Bearer <api-key>`
+/// 
+/// Parameters:
+/// - `mailbox_id`: The ID of the mailbox containing the email
+/// - `email_id`: The ID of the email to delete
+/// 
+/// Returns:
+/// - 200: Email successfully deleted
+/// - 401: Missing or invalid API key
+/// - 403: API key owner doesn't have access to the mailbox
+/// - 404: Mailbox or email not found
+/// 
+/// Example response:
+/// ```json
+/// {
+///   "success": true,
+///   "data": null
+/// }
+/// ```
+async fn api_delete_email<D>(
+    State(state): State<Arc<AppState<D>>>,
+    api_claims: api_auth::ApiClaims,
+    Path((mailbox_id, email_id)): Path<(String, String)>,
+) -> Result<Json<ApiResponse<()>>, StatusCode>
+where
+    D: Database + Send + Sync + 'static,
+{
+    match delete_email_for_user(&state, &api_claims.user_id, &mailbox_id, &email_id).await {
+        Ok(_) => Ok(Json(ApiResponse::success(()))),
+        Err(e) => {
+            error!("API error while deleting email: {}", e);
+            Ok(Json(ApiResponse::error(e.to_string())))
+        }
+    }
+}
+
 // Re-export auth types for public use
-pub use auth::{AuthResponse, LoginRequest, RegisterRequest}; 
+pub use auth::{AuthResponse, LoginRequest, RegisterRequest};
+
+async fn serve_swagger_spec() -> impl IntoResponse {
+    Response::builder()
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(api_spec::SWAGGER_SPEC.to_string())
+        .unwrap()
+} 

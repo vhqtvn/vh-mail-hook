@@ -3,10 +3,16 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
 	plugins: [sveltekit()],
+	optimizeDeps: {
+		include: ['swagger-ui-dist']
+	},
 	build: {
 		// Build to a directory that our Rust code can easily include
 		outDir: '../static',
 		emptyOutDir: true,
+		commonjsOptions: {
+			include: [/swagger-ui-dist/]
+		}
 	},
 	server: {
 		allowedHosts: true,

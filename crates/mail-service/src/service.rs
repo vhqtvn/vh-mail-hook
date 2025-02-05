@@ -35,6 +35,7 @@ pub struct MailService {
     greylist_delay: Duration,
     enable_spf: bool,
     enable_dkim: bool,
+    #[allow(dead_code)]
     dns_resolver: Arc<dyn DnsResolver>,
 }
 

@@ -4,6 +4,7 @@
   import { page } from '$app/stores';
   import { generateAgeKeyPair, validateAgePublicKey, type AgeKeyPair } from '$lib/age';
   import ErrorAlert from '$lib/components/ErrorAlert.svelte';
+  import Toast from '$lib/components/Toast.svelte';
 
   interface Mailbox {
     id: string;
@@ -37,6 +38,10 @@
   let showPrivateKeyModal = false;
   let supportedDomains: string[] = [];
   let selectedDomain = '';
+
+  // Add after other let declarations
+  let toastMessage = '';
+  let showToast = false;
 
   function validatePublicKey(key: string): boolean {
     return validateAgePublicKey(key);
@@ -101,6 +106,14 @@
     if (seconds > 0) parts.push(`${seconds} ${seconds === 1 ? 'second' : 'seconds'}`);
 
     return parts.join(', ');
+  }
+
+  function showNotification(message: string) {
+    toastMessage = message;
+    showToast = true;
+    setTimeout(() => {
+      showToast = false;
+    }, 3000);
   }
 
   onMount(async () => {
@@ -239,33 +252,36 @@
               <div>
                 <div class="text-sm font-semibold mb-2">Email Address</div>
                 <div class="flex gap-2 items-center">
-                  <div class="text-base text-base-content/70 flex-1 font-mono bg-base-300 p-3 rounded">
-                    <span class="text-primary font-semibold">{mailbox.alias}@</span>
-                    {#if supportedDomains.length > 1}
-                      <div class="dropdown dropdown-hover inline-block">
-                        <span class="text-base-content/50 cursor-pointer" tabindex="0">{selectedDomain}</span>
-                        <ul tabindex="-1" class="dropdown-content z-[1] menu p-2 shadow bg-base-200 rounded-box">
-                          {#each supportedDomains as domain}
-                            <li>
-                              <button 
-                                class="whitespace-nowrap" 
-                                on:click={() => selectedDomain = domain}
-                              >
-                                {domain}
-                              </button>
-                            </li>
-                          {/each}
-                        </ul>
-                      </div>
-                    {:else}
-                      <span class="text-base-content/50">{supportedDomains[0] || 'any-supported-domain'}</span>
-                    {/if}
+                  <div class="text-base text-base-content/70 flex-1 font-mono bg-base-300 p-3 rounded min-w-0">
+                    <div class="flex items-center">
+                      <span class="text-primary font-semibold whitespace-nowrap">{mailbox.alias}@</span>{#if supportedDomains.length > 1}
+                        <div class="dropdown dropdown-hover inline-block">
+                          <span class="text-base-content/50 cursor-pointer" tabindex="0">{selectedDomain}</span>
+                          <ul tabindex="-1" class="dropdown-content z-[1] menu p-2 shadow bg-base-200 rounded-box">
+                            {#each supportedDomains as domain}
+                              <li>
+                                <button 
+                                  class="whitespace-nowrap" 
+                                  on:click={() => selectedDomain = domain}
+                                >
+                                  {domain}
+                                </button>
+                              </li>
+                            {/each}
+                          </ul>
+                        </div>
+                      {:else}
+                        <span class="text-base-content/50">{supportedDomains[0] || 'any-supported-domain'}</span>
+                      {/if}
+                    </div>
                   </div>
                   <button 
-                    class="btn btn-sm btn-ghost"
+                    class="btn btn-square btn-sm btn-ghost shrink-0"
                     on:click={() => {
                       const domain = selectedDomain || supportedDomains[0] || 'any-supported-domain';
-                      navigator.clipboard.writeText(`${mailbox.alias}@${domain}`);
+                      const email = `${mailbox.alias}@${domain}`;
+                      navigator.clipboard.writeText(email);
+                      showNotification('Email address copied to clipboard');
                     }}
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -275,17 +291,44 @@
                 </div>
               </div>
 
+              <!-- Mailbox ID for API -->
+              <div>
+                <div class="text-sm font-semibold mb-2">Mailbox ID (for API)</div>
+                <div class="flex gap-2 items-center">
+                  <div class="text-base text-base-content/70 flex-1 font-mono bg-base-300 p-3 rounded min-w-0">
+                    <div class="truncate">
+                      {mailbox.id}
+                    </div>
+                  </div>
+                  <button 
+                    class="btn btn-square btn-sm btn-ghost shrink-0"
+                    on:click={() => {
+                      navigator.clipboard.writeText(mailbox.id);
+                      showNotification('Mailbox ID copied to clipboard');
+                    }}
+                    title="Copy ID"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
               <!-- Public Key -->
               <div>
                 <div class="text-sm font-semibold mb-2">Public Key</div>
                 <div class="flex gap-2 items-center">
-                  <div class="text-base text-base-content/70 flex-1 font-mono bg-base-300 p-3 rounded">
-                    {mailbox.public_key}
+                  <div class="text-base text-base-content/70 flex-1 font-mono bg-base-300 p-3 rounded min-w-0">
+                    <div class="truncate">
+                      {mailbox.public_key}
+                    </div>
                   </div>
                   <button 
-                    class="btn btn-sm btn-ghost"
+                    class="btn btn-square btn-sm btn-ghost shrink-0"
                     on:click={() => {
                       navigator.clipboard.writeText(mailbox.public_key);
+                      showNotification('Public key copied to clipboard');
                     }}
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -301,7 +344,7 @@
                 </div>
                 {#if mailbox.mail_expires_in}
                   <div class="text-warning">
-                    Emails expire after {formatExpirationTime(mailbox.mail_expires_in)}
+                    Emails expire after arriving in your mailbox {formatExpirationTime(mailbox.mail_expires_in)}
                   </div>
                 {/if}
               </div>
@@ -496,4 +539,6 @@
       </div>
     </div>
   </div>
-{/if} 
+{/if}
+
+<Toast message={toastMessage} visible={showToast} /> 
