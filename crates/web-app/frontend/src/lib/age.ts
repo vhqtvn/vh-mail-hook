@@ -1,7 +1,5 @@
-// We'll use a dynamic import for bech32 since it's CommonJS
+// We'll use dynamic imports for both modules
 import type { bech32 } from 'bech32';
-// TweetNaCl needs to be imported as a namespace
-import * as nacl from 'tweetnacl';
 
 export interface AgeKeyPair {
   publicKey: string;
@@ -29,10 +27,14 @@ export async function validateAgePublicKey(key: string): Promise<boolean> {
 }
 
 export async function generateAgeKeyPair(): Promise<AgeKeyPair> {
-  // Generate X25519 key pair using TweetNaCl
-  const keyPair = nacl.box.keyPair();
+  // Import modules dynamically
+  const [naclModule, bech32Module] = await Promise.all([
+    import('tweetnacl'),
+    import('bech32')
+  ]);
   
-  const bech32Module = await import('bech32');
+  // Generate X25519 key pair using TweetNaCl
+  const keyPair = naclModule.box.keyPair();
   
   // Convert public key to 5-bit words for bech32
   const publicKeyWords = bech32Module.bech32.toWords(Array.from(keyPair.publicKey));
@@ -40,7 +42,7 @@ export async function generateAgeKeyPair(): Promise<AgeKeyPair> {
   // Encode public key in bech32 format with 'age' prefix
   const publicKey = bech32Module.bech32.encode('age', publicKeyWords);
   
-  const privateKeyWords = bech32Module.bech32.toWords(Array.from(keyPair.secretKey));  // const privateKey = `AGE-SECRET-KEY-1${privateKeyBase64}`;
+  const privateKeyWords = bech32Module.bech32.toWords(Array.from(keyPair.secretKey));
   const privateKey = bech32Module.bech32.encode('AGE-SECRET-KEY-', privateKeyWords).toLocaleUpperCase();
 
   return { publicKey, privateKey };
