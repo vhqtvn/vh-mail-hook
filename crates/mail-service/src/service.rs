@@ -12,7 +12,7 @@ use governor::{
 use ipnetwork::IpNetwork;
 use mail_parser::Message;
 use std::{net::IpAddr, sync::Arc, time::Duration};
-use tracing::{error, info, warn};
+use tracing::{error, info, warn, debug};
 
 #[derive(Clone)]
 pub struct ServiceConfig {
@@ -126,6 +126,8 @@ impl MailService {
         let (local_part, _domain) = recipient.split_once('@')
             .ok_or_else(|| AppError::Mail("Invalid recipient address format".to_string()))?;
 
+        debug!("Local part: {}", local_part);
+
         // Check greylisting if enabled
         if self.enable_greylisting {
             let key = (client_ip, sender.to_string(), recipient.to_string());
@@ -133,10 +135,13 @@ impl MailService {
 
             if let Some(first_seen) = self.greylist.get(&key) {
                 if now - *first_seen < self.greylist_delay.as_secs() as i64 {
+                    debug!("Greylisted, try again later");
                     return Err(AppError::Mail("Greylisted, try again later".to_string()));
                 }
+                debug!("Greylist removed");
             } else {
                 self.greylist.insert(key, now);
+                debug!("Greylisted, try again later");
                 return Err(AppError::Mail("Greylisted, try again later".to_string()));
             }
             // the removal is done here to avoid deadlock with if let
@@ -164,14 +169,20 @@ impl MailService {
             }
         }
 
+        debug!("Mailbox pre-validation passed");
+
         let mailbox = self
             .db
             .get_mailbox_by_address(local_part)
             .await?
             .ok_or_else(|| AppError::Mail(format!("Mailbox not found: {}", recipient)))?;
 
+        debug!("Mailbox found: {}", mailbox.id);
+
         // Encrypt email content using age encryption
         let encrypted_content = encrypt_email(raw_email, &mailbox.public_key)?;
+
+        debug!("Encrypted content");
 
         let received_at = chrono::Utc::now().timestamp();
         let email = Email {
@@ -182,7 +193,12 @@ impl MailService {
             expires_at: mailbox.mail_expires_in.map(|duration| received_at + duration),
         };
 
+        debug!("Email created");
+
         self.db.save_email(&email).await?;
+
+        debug!("Email saved");
+
         Ok(())
     }
 

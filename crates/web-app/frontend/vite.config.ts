@@ -1,8 +1,25 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
+import { resolve } from 'path';
+import fs from 'fs';
 
 export default defineConfig({
-	plugins: [sveltekit()],
+	plugins: [
+		sveltekit(),
+		{
+			name: 'copy-swagger-html',
+			generateBundle() {
+				this.emitFile({
+					type: 'asset',
+					fileName: 'swagger.html',
+					source: fs.readFileSync(
+						resolve(__dirname, 'static/swagger.html'),
+						'utf-8'
+					)
+				});
+			}
+		}
+	],
 	optimizeDeps: {
 		include: ['swagger-ui-dist']
 	},
