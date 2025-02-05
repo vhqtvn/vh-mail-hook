@@ -11,10 +11,10 @@ COPY crates crates
 # Build the vh-mail-hook in release mode
 RUN cargo build --release -p vh-mail-hook
 
-FROM debian:buster-slim
+FROM debian:bookworm-slim
 
 # Install minimal dependencies needed
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

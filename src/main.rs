@@ -71,6 +71,10 @@ pub struct Config {
     /// Blocked IP networks in CIDR format (e.g. "10.0.0.0/8,192.168.0.0/16")
     #[arg(long, env = "BLOCKED_NETWORKS", value_delimiter = ',')]
     pub blocked_networks: Option<Vec<String>>,
+
+    /// Supported email domains (comma-separated)
+    #[arg(long, env = "SUPPORTED_DOMAINS", value_delimiter = ',', default_value = "mail-hook.example.com")]
+    pub supported_domains: Vec<String>,
 }
 
 #[tokio::main]
@@ -91,6 +95,7 @@ async fn main() {
         database_path: config.database_path.clone(),
         bind_addr: config.web_bind_addr.clone(),
         web_app_url: config.web_app_url.clone(),
+        supported_domains: config.supported_domains.clone(),
     };
 
     // Create mail service config

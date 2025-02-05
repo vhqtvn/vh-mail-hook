@@ -33,6 +33,10 @@ pub struct Config {
     /// Web app URL (e.g. 'https://example.com')
     #[arg(long, env = "WEB_APP_URL", default_value = "https://example.com")]
     pub web_app_url: String,
+
+    /// Supported email domains (comma-separated)
+    #[arg(long, env = "SUPPORTED_DOMAINS", value_delimiter = ',', default_value = "mail-hook.example.com")]
+    pub supported_domains: Vec<String>,
 }
 
 static CONFIG: OnceLock<Config> = OnceLock::new();
@@ -50,7 +54,8 @@ pub fn init_config(config: Config) {
         // If the configs are the same, just return
         if existing.database_path == config.database_path 
             && existing.bind_addr == config.bind_addr 
-            && existing.web_app_url == config.web_app_url {
+            && existing.web_app_url == config.web_app_url
+            && existing.supported_domains == config.supported_domains {
             return;
         }
     }
@@ -470,11 +475,10 @@ async fn list_mailboxes<D: Database>(
 async fn get_supported_domains<D: Database>(
     State(_state): State<Arc<AppState<D>>>,
 ) -> Result<Json<ApiResponse<SupportedDomainsResponse>>, StatusCode> {
-    // TODO: For now, return a hardcoded list. In the future, this could be configurable or fetched from a database
-    let domains = vec![
-        "mail-hook.example.com".to_string(),
-        // Add more supported domains here
-    ];
+    let domains = CONFIG.get()
+        .expect("Config not initialized")
+        .supported_domains
+        .clone();
     
     Ok(Json(ApiResponse::success(SupportedDomainsResponse { domains })))
 }
