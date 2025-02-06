@@ -1,6 +1,6 @@
 import fetch from 'cross-fetch';
 import * as age from 'age-encryption';
-import { VHMailHookConfig, Email, EmailListResponse, EmailResponse, DecryptedEmail } from './types';
+import { VHMailHookConfig, Email, EmailListResponse, EmailResponse, DecryptedEmail } from './types.js';
 
 export class VHMailHookClient {
   private domain: string;
