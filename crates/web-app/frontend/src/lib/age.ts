@@ -20,7 +20,8 @@ export async function validateAgePublicKey(key: string): Promise<boolean> {
     if (!key.startsWith('age1')) return false;
     const bech32Module = await import('bech32');
     const decoded = bech32Module.bech32.decode(key);
-    return decoded.prefix === 'age' && decoded.words.length === 32; // X25519 public key is 32 bytes
+    console.log(decoded);
+    return decoded.prefix === 'age' && decoded.words.length === 52;
   } catch {
     return false;
   }

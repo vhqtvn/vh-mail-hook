@@ -186,7 +186,7 @@ impl MailService {
         trace!("Looking up mailbox in database");
         let mailbox = self
             .db
-            .get_mailbox_by_address(local_part)
+            .get_mailbox_by_incoming_address(local_part)
             .await?
             .ok_or_else(|| AppError::Mail(format!("Mailbox not found: {}", recipient)))?;
 

@@ -60,7 +60,7 @@
     if (!key) {
       publicKeyError = '';
     } else if (!(await validatePublicKey(key))) {
-      publicKeyError = 'Invalid age public key format. Should start with "age1" and be exactly 63 characters long.';
+      publicKeyError = 'Invalid age public key format.';
     } else {
       publicKeyError = '';
     }

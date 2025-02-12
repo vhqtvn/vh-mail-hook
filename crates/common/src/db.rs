@@ -23,6 +23,7 @@ pub trait Database: Send + Sync {
     async fn create_mailbox(&self, mailbox: &Mailbox) -> Result<(), AppError>;
     async fn get_mailbox(&self, mailbox_id: &str) -> Result<Option<Mailbox>, AppError>;
     async fn get_mailbox_by_address(&self, local_part: &str) -> Result<Option<Mailbox>, AppError>;
+    async fn get_mailbox_by_incoming_address(&self, local_part: &str) -> Result<Option<Mailbox>, AppError>;
     async fn get_mailboxes_by_owner(&self, owner_id: &str) -> Result<Vec<Mailbox>, AppError>;
     async fn delete_mailbox(&self, mailbox_id: &str) -> Result<(), AppError>;
     async fn cleanup_expired_mailboxes(&self) -> Result<(), AppError>;
@@ -244,6 +245,35 @@ impl Database for SqliteDatabase {
 
     async fn get_mailbox_by_address(&self, local_part: &str) -> Result<Option<Mailbox>, AppError> {
         let mailbox = sqlx::query("SELECT * FROM mailboxes WHERE alias = ?")
+            .bind(local_part)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        match mailbox {
+            Some(row) => Ok(Some(Mailbox {
+                id: row.get("id"),
+                alias: row.get("alias"),
+                name: row.get("name"),
+                public_key: row.get("public_key"),
+                owner_id: row.get("owner_id"),
+                created_at: row.get("created_at"),
+                mail_expires_in: row.get("mail_expires_in"),
+            })),
+            None => Ok(None),
+        }
+    }
+
+    async fn get_mailbox_by_incoming_address(&self, local_part: &str) -> Result<Option<Mailbox>, AppError> {
+        // First try exact match
+        if let Some(mailbox) = self.get_mailbox_by_address(local_part).await? {
+            return Ok(Some(mailbox));
+        }
+
+        // Then try prefix match
+        let mailbox = sqlx::query(
+            "SELECT * FROM mailboxes WHERE ? LIKE alias || '%' ORDER BY length(alias) DESC LIMIT 1"
+        )
             .bind(local_part)
             .fetch_optional(&self.pool)
             .await
@@ -495,6 +525,10 @@ impl<D: Database + ?Sized> Database for Arc<D> {
 
     async fn get_mailbox_by_address(&self, local_part: &str) -> Result<Option<Mailbox>, AppError> {
         (**self).get_mailbox_by_address(local_part).await
+    }
+
+    async fn get_mailbox_by_incoming_address(&self, local_part: &str) -> Result<Option<Mailbox>, AppError> {
+        (**self).get_mailbox_by_incoming_address(local_part).await
     }
 
     async fn get_mailboxes_by_owner(&self, owner_id: &str) -> Result<Vec<Mailbox>, AppError> {
