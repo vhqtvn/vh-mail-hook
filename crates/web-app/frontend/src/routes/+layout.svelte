@@ -26,7 +26,7 @@
 </script>
 
 <div class="min-h-screen bg-base-100">
-	<div class="navbar h-14 px-4 sm:px-8 bg-base-100 border-b border-base-200 shadow-sm overflow-x-hidden">
+	<div class="navbar h-14 px-4 sm:px-8 bg-base-100 border-b border-base-200 shadow-sm">
 		<div class="flex-1">
 			<a href="/" class="flex items-center pl-2">
 				<div class="p-1.5 rounded-xl bg-primary/10">
