@@ -8,8 +8,18 @@ VHMailHook is a secure email handling system that provides temporary mailboxes a
 
 VHMailHook consists of two main components:
 
-- **Mail Service**: Handles reception, processing, and encryption of emails. It manages incoming emails, encrypts them with mailbox-specific keys, enforces rate limits, and automatically cleans up expired emails.
-- **Web Application**: Provides a RESTful API for mailbox management, supports multiple authentication methods (GitHub, Telegram, password-based), and offers an admin interface for system configuration.
+- **Mail Service**: Handles reception, processing, and encryption of emails. It manages incoming emails, encrypts them with mailbox-specific keys, enforces rate limits, and automatically cleans up expired emails. Features flexible mailbox matching and enhanced email processing resilience.
+- **Web Application**: Provides a RESTful API for mailbox management, supports multiple authentication methods (GitHub, Telegram, password-based), and offers an admin interface for system configuration. Includes a modern two-column layout for efficient email management.
+
+## Features
+
+- **Secure Email Handling**: End-to-end encryption using AGE for all stored emails
+- **Flexible Mailbox Matching**: Smart email address matching with local part normalization
+- **Modern Web Interface**: Intuitive two-column layout for efficient email management
+- **Client Library**: Official NPM package for easy integration
+- **Multiple Authentication Methods**: Support for GitHub, Google, Telegram, and password-based auth
+- **Robust Email Processing**: Enhanced SMTP handling with improved resilience
+- **Automated Cleanup**: Configurable retention policies for emails
 
 ## Requirements
 
@@ -207,3 +217,32 @@ You can simplify running the application using Docker. For example:
 ## License
 
 This project is licensed under the MIT License.
+
+## Client Library
+
+VHMailHook provides an official NPM package for easy integration with your JavaScript/TypeScript projects:
+
+```bash
+npm install @vhmailhook/client
+```
+
+Example usage:
+
+```typescript
+import { VHMailHook } from '@vhmailhook/client';
+
+const client = new VHMailHook({
+  baseUrl: 'https://your-instance.com'
+});
+
+// Get emails from a mailbox
+const emails = await client.getEmails('your-mailbox-id');
+
+// Get emails with automatic decryption
+const decryptedEmails = await client.getEmails('your-mailbox-id', 'your-age-private-key');
+
+// Delete an email
+await client.deleteEmail('your-mailbox-id', 'email-id');
+```
+
+For detailed client library documentation, visit the [NPM package documentation](packages/npm/README.md).
