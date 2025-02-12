@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { get, post, del } from '$lib/api';
+  import { get, post, del, patch } from '$lib/api';
   import { page } from '$app/stores';
   import { generateAgeKeyPair, validateAgePublicKey, type AgeKeyPair } from '$lib/age';
   import ErrorAlert from '$lib/components/ErrorAlert.svelte';
@@ -43,6 +43,13 @@
   // Add after other let declarations
   let toastMessage = '';
   let showToast = false;
+
+  // Add to the script section after other let declarations
+  let showUpdateKeyModal = false;
+  let updatingMailbox: Mailbox | null = null;
+  let newPublicKey = '';
+  let newPrivateKey = '';
+  let updatingKey = false;
 
   async function validatePublicKey(key: string): Promise<boolean> {
     return validateAgePublicKey(key);
@@ -197,6 +204,45 @@
       error = e;
     }
   }
+
+  // Add new function for updating the public key
+  async function updateMailboxKey(mailbox: Mailbox) {
+    if (!validatePublicKey(newPublicKey)) {
+      error = new Error('Please provide a valid public key');
+      return;
+    }
+
+    error = null;
+    try {
+      const response = await patch<Mailbox>(`/api/mailboxes/${mailbox.id}`, {
+        public_key: newPublicKey
+      });
+
+      // Update the mailbox in the list
+      mailboxes = mailboxes.map(m => m.id === mailbox.id ? response.data! : m);
+      
+      // Save the new private key if it exists
+      if (newPrivateKey) {
+        savePrivateKey(newPublicKey, newPrivateKey);
+      }
+
+      showUpdateKeyModal = false;
+      updatingMailbox = null;
+      newPublicKey = '';
+      newPrivateKey = '';
+      showNotification('Mailbox key updated successfully');
+    } catch (e) {
+      error = e;
+    }
+  }
+
+  // Add to the script section after other functions
+  async function openUpdateKeyModal(mailbox: Mailbox) {
+    updatingMailbox = mailbox;
+    newPublicKey = '';
+    newPrivateKey = '';
+    showUpdateKeyModal = true;
+  }
 </script>
 
 <style>
@@ -285,6 +331,7 @@
                   </svg>
                 </button>
                 <ul class="dropdown-content menu p-2 shadow-lg bg-base-100 rounded-box w-52">
+                  <li><button on:click={() => openUpdateKeyModal(mailbox)}>Update Key</button></li>
                   <li><button class="text-error" on:click={() => deleteMailbox(mailbox.id)}>Delete</button></li>
                 </ul>
               </div>
@@ -545,7 +592,7 @@
     <div class="modal-box">
       <h3 class="font-bold text-lg mb-4">Save Your Private Key</h3>
       <p class="text-warning mb-4">
-        Important: Save this private key now. You won't be able to see it again!
+        Important: Store this private key securely. It will be saved in your browser but you should keep a backup. Without it, you won't be able to decrypt your emails!
       </p>
       <div class="bg-base-300 p-4 rounded-lg font-mono text-sm mb-4 break-all">
         {privateKey}
@@ -585,6 +632,101 @@
       <div class="modal-action">
         <button class="btn btn-primary" on:click={closePrivateKeyModal}>I've Saved It</button>
       </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Update Key Modal -->
+{#if showUpdateKeyModal && updatingMailbox}
+  <div class="modal modal-open">
+    <div class="modal-box">
+      <h3 class="font-bold text-lg mb-4">Update Mailbox Key</h3>
+      
+      <ErrorAlert {error} className="mb-4" />
+
+      <div class="alert alert-warning mb-4">
+        <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+        <span>Warning: Updating the key will prevent decryption of previously received emails with the old key.</span>
+      </div>
+
+      <form on:submit|preventDefault={() => {
+        if (updatingMailbox) {
+          updateMailboxKey(updatingMailbox);
+        }
+      }}>
+        <div class="form-control mt-4">
+          <label class="label" for="public-key">
+            <span class="label-text">New Public Key (age format)</span>
+          </label>
+          <div class="join w-full">
+            <input
+              type="text"
+              id="new-public-key"
+              class="input input-bordered join-item w-full"
+              bind:value={newPublicKey}
+              on:input={(e) => updatePublicKey((e.target as HTMLInputElement).value)}
+              placeholder="age1..."
+              required
+            />
+            <button 
+              type="button" 
+              class="btn"
+              on:click|preventDefault={async () => {
+                updatingKey = true;
+                try {
+                  const keyPair = await generateAgeKeyPair();
+                  await updatePublicKey(keyPair.publicKey);
+                  newPublicKey = keyPair.publicKey;
+                  newPrivateKey = keyPair.privateKey;
+                } catch (e) {
+                  error = e;
+                } finally {
+                  updatingKey = false;
+                }
+              }}
+              disabled={updatingKey}
+            >
+              {#if updatingKey}
+                <span class="loading loading-spinner loading-sm"></span>
+              {:else}
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+                Generate New
+              {/if}
+            </button>
+          </div>
+          {#if publicKeyError}
+            <div class="text-error text-sm mt-1">{publicKeyError}</div>
+          {/if}
+        </div>
+
+        {#if newPrivateKey}
+          <div class="form-control mt-4">
+            <label class="label">
+              <span class="label-text">New Private Key</span>
+            </label>
+            <div class="bg-base-300 p-4 rounded-lg font-mono text-sm break-all">
+              {newPrivateKey}
+            </div>
+            <div class="text-warning text-sm mt-2">
+              Important: Store this private key securely. It will be saved in your browser but you should keep a backup. Without it, you won't be able to decrypt your emails!
+            </div>
+          </div>
+        {/if}
+
+        <div class="modal-action">
+          <button type="button" class="btn" on:click={() => {
+            showUpdateKeyModal = false;
+            updatingMailbox = null;
+            newPublicKey = '';
+            newPrivateKey = '';
+          }}>Cancel</button>
+          <button type="submit" class="btn btn-primary">Update Key</button>
+        </div>
+      </form>
     </div>
   </div>
 {/if}

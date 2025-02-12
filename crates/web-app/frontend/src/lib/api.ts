@@ -150,6 +150,14 @@ export async function del<T = any>(endpoint: string, options: FetchOptions = {})
   return fetchApi<T>(endpoint, { ...options, method: 'DELETE' });
 }
 
+export async function patch<T = any>(endpoint: string, data: any, options: FetchOptions = {}): Promise<ApiResponse<T>> {
+  return fetchApi<T>(endpoint, {
+    ...options,
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
 export interface ApiKey {
   id: string;
   key: string;

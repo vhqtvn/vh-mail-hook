@@ -37,13 +37,13 @@ impl Handler for SmtpHandler {
         // Check if IP is blocked
         if self.service.is_ip_blocked(self.client_ip) {
             warn!("Blocked connection from IP: {}", self.client_ip);
-            return Response::custom(554, "Connection not allowed".to_string());
+            return Response::custom(250, "OK".to_string());
         }
 
         // Check rate limit
         if !self.service.check_rate_limit(self.client_ip) {
             warn!("Rate limit exceeded for IP: {}", self.client_ip);
-            return Response::custom(451, "Rate limit exceeded, try again later".to_string());
+            return Response::custom(250, "OK".to_string());
         }
 
         Response::custom(250, "OK".to_string())
@@ -71,14 +71,18 @@ impl Handler for SmtpHandler {
         _accepted: &[String],
     ) -> Response {
         if self.recipients.is_empty() {
-            return Response::custom(554, "No valid recipients".to_string());
+            warn!("Attempted to send email with no valid recipients");
+            return Response::custom(354, "Start mail input; end with <CRLF>.<CRLF>".to_string());
         }
         Response::custom(354, "Start mail input; end with <CRLF>.<CRLF>".to_string())
     }
 
     fn data(&mut self, buf: &[u8]) -> io::Result<()> {
         if self.current_mail.len() + buf.len() > self.service.max_email_size() {
-            return Err(io::Error::new(io::ErrorKind::Other, "Message too large"));
+            warn!("Message size exceeds limit");
+            // Still accept the data but truncate it
+            self.current_mail.extend_from_slice(&buf[..self.service.max_email_size() - self.current_mail.len()]);
+            return Ok(());
         }
 
         self.current_mail.extend_from_slice(buf);
@@ -106,7 +110,8 @@ impl Handler for SmtpHandler {
                     }
                     results
                 });
-                let mut all_succeeded = true;
+
+                // Log errors but don't expose them to sender
                 for (recipient, result) in results {
                     match result {
                         Ok(_) => {
@@ -114,25 +119,17 @@ impl Handler for SmtpHandler {
                         }
                         Err(e) => {
                             error!("Failed to process email for {}: {}", recipient, e);
-                            all_succeeded = false;
                         }
                     }
                 }
-                if all_succeeded {
-                    Response::custom(250, "OK".to_string())
-                } else {
-                    Response::custom(
-                        451,
-                        "Failed to process email for some recipients".to_string(),
-                    )
-                }
+
+                // Always return success to sender
+                Response::custom(250, "OK".to_string())
             }
             Err(e) => {
                 error!("Failed to acquire runtime lock for email processing: {}", e);
-                Response::custom(
-                    451,
-                    "Temporary local problem - please try later".to_string(),
-                )
+                // Still return success to sender
+                Response::custom(250, "OK".to_string())
             }
         }
     }

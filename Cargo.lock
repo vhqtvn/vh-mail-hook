@@ -313,6 +313,7 @@ dependencies = [
  "matchit",
  "memchr",
  "mime",
+ "multer",
  "percent-encoding",
  "pin-project-lite 0.2.16",
  "rustversion",
@@ -2419,6 +2420,23 @@ dependencies = [
  "net2",
  "winapi 0.2.8",
  "ws2_32-sys",
+]
+
+[[package]]
+name = "multer"
+version = "3.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "83e87776546dc87511aa5ee218730c92b666d7264ab6ed41f9d215af9cd5224b"
+dependencies = [
+ "bytes 1.9.0",
+ "encoding_rs",
+ "futures-util",
+ "http 1.2.0",
+ "httparse",
+ "memchr",
+ "mime",
+ "spin",
+ "version_check",
 ]
 
 [[package]]
@@ -4930,6 +4948,7 @@ dependencies = [
 name = "web-app"
 version = "0.1.0"
 dependencies = [
+ "age",
  "anyhow",
  "argon2",
  "axum",

@@ -26,6 +26,11 @@
     };
   }
 
+  interface DecryptionResult {
+    email: DecryptedEmail | null;
+    error?: string;
+  }
+
   interface Mailbox {
     id: string;
     alias: string;
@@ -36,7 +41,7 @@
   let loading = true;
   let error: unknown | null = null;
   let emails: Email[] = [];
-  let decryptedEmails: DecryptedEmail[] = [];
+  let decryptionResults: Map<string, DecryptionResult> = new Map();
   let toastMessage = '';
   let showToast = false;
   let mailbox: Mailbox | null = null;
@@ -49,7 +54,7 @@
     }, 3000);
   }
 
-  async function decryptEmail(email: Email, privateKey: string): Promise<DecryptedEmail> {
+  async function decryptEmail(email: Email, privateKey: string): Promise<DecryptionResult> {
     try {
       const d = new age.Decrypter();
       d.addIdentity(privateKey);
@@ -102,13 +107,28 @@
       }
 
       return {
-        ...email,
-        content,
-        parsed
+        email: {
+          ...email,
+          content,
+          parsed
+        }
       };
     } catch (error) {
       console.error('Error decrypting email:', error);
-      throw new Error('Failed to decrypt email');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to decrypt email';
+      
+      // Check if the error indicates no matching key
+      if (errorMessage.includes('no identity matched any of the file\'s recipients')) {
+        return {
+          email: null,
+          error: 'This email was encrypted with a different key. The private key stored in your browser cannot decrypt it.'
+        };
+      }
+      
+      return {
+        email: null,
+        error: errorMessage
+      };
     }
   }
 
@@ -128,10 +148,17 @@
       const privateKey = getPrivateKey(mailbox.public_key);
 
       if (privateKey) {
-        // Decrypt all emails
-        decryptedEmails = await Promise.all(
-          emails.map(email => decryptEmail(email, privateKey))
+        // Decrypt each email independently
+        const results = await Promise.all(
+          emails.map(async email => {
+            const result = await decryptEmail(email, privateKey);
+            return [email.id, result] as [string, DecryptionResult];
+          })
         );
+        decryptionResults = new Map(results);
+      } else {
+        // Clear any existing decryption results if no private key is available
+        decryptionResults = new Map();
       }
     } catch (e) {
       error = e;
@@ -148,7 +175,7 @@
     try {
       await del('/api/mailboxes/' + $page.params.id + '/emails/' + emailId);
       emails = emails.filter(e => e.id !== emailId);
-      decryptedEmails = decryptedEmails.filter(e => e.id !== emailId);
+      decryptionResults.delete(emailId);
       showNotification('Email deleted successfully');
     } catch (e) {
       error = e;
@@ -239,12 +266,12 @@
     </div>
   {:else}
     <div class="space-y-4">
-      {#if emails.length > 0 && decryptedEmails.length === 0}
+      {#if !getPrivateKey(mailbox?.public_key || '')}
         <div class="alert alert-warning">
           <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
-          <span>Private key not found in browser storage. Cannot decrypt emails.</span>
+          <span>Private key not found in browser storage. Cannot decrypt emails. If you recently updated the key, old emails cannot be decrypted with the new key.</span>
         </div>
       {/if}
 
@@ -284,7 +311,81 @@
               {/if}
             </div>
 
-            <div class="collapse bg-base-300">
+            {#if decryptionResults.has(email.id)}
+              {@const result = decryptionResults.get(email.id)!}
+              {#if result.email !== null}
+                <div class="mt-4">
+                  <div class="divider">Decrypted Content</div>
+                  <div class="space-y-4">
+                    <h2 class="text-xl font-bold">{result.email.parsed.subject || '(No Subject)'}</h2>
+                    
+                    <div class="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span class="font-semibold">From:</span> {result.email.parsed.from}
+                      </div>
+                      <div>
+                        <span class="font-semibold">To:</span> {result.email.parsed.to}
+                      </div>
+                    </div>
+
+                    <div class="whitespace-pre-wrap font-mono text-sm bg-base-300 p-4 rounded">
+                      {result.email.parsed.body}
+                    </div>
+
+                    <div class="collapse bg-base-300">
+                      <input type="checkbox" id="raw-decrypted-{email.id}" class="peer" /> 
+                      <label for="raw-decrypted-{email.id}" class="collapse-title font-medium flex items-center cursor-pointer">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2 transition-transform peer-checked:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                        </svg>
+                        Raw Decrypted Content
+                      </label>
+                      <div class="collapse-content">
+                        <div class="font-mono text-xs break-all whitespace-pre-wrap">
+                          {result.email.content}
+                        </div>
+                        <div class="mt-2">
+                          <button 
+                            class="btn btn-sm btn-ghost"
+                            on:click={() => {
+                              navigator.clipboard.writeText(result.email.content);
+                              showNotification('Raw decrypted content copied to clipboard');
+                            }}
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-12a2 2 0 00-2-2h-2M8 5a2 2 0 002 2h4a2 2 0 002-2M8 5a2 2 0 012-2h4a2 2 0 012 2" />
+                            </svg>
+                            Copy Raw
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              {:else}
+                <div class="alert alert-warning">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <div>
+                    <div class="font-semibold">Unable to decrypt email</div>
+                    <div class="text-sm">{result.error}</div>
+                  </div>
+                </div>
+              {/if}
+            {:else}
+              <div class="alert alert-warning">
+                <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                  <div class="font-semibold">No private key available</div>
+                  <div class="text-sm">Private key is not available in browser storage. Cannot attempt decryption.</div>
+                </div>
+              </div>
+            {/if}
+
+            <div class="collapse bg-base-300 mt-4">
               <input type="checkbox" id="raw-content-{email.id}" class="peer" /> 
               <label for="raw-content-{email.id}" class="collapse-title font-medium flex items-center cursor-pointer">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2 transition-transform peer-checked:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -312,60 +413,6 @@
                 </div>
               </div>
             </div>
-
-            {#if decryptedEmails.length > 0}
-              {@const decryptedEmail = decryptedEmails.find(d => d.id === email.id)}
-              {#if decryptedEmail}
-                <div class="mt-4">
-                  <div class="divider">Decrypted Content</div>
-                  <div class="space-y-4">
-                    <h2 class="text-xl font-bold">{decryptedEmail.parsed.subject || '(No Subject)'}</h2>
-                    
-                    <div class="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span class="font-semibold">From:</span> {decryptedEmail.parsed.from}
-                      </div>
-                      <div>
-                        <span class="font-semibold">To:</span> {decryptedEmail.parsed.to}
-                      </div>
-                    </div>
-
-                    <div class="whitespace-pre-wrap font-mono text-sm bg-base-300 p-4 rounded">
-                      {decryptedEmail.parsed.body}
-                    </div>
-
-                    <div class="collapse bg-base-300">
-                      <input type="checkbox" id="raw-decrypted-{email.id}" class="peer" /> 
-                      <label for="raw-decrypted-{email.id}" class="collapse-title font-medium flex items-center cursor-pointer">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2 transition-transform peer-checked:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-                        </svg>
-                        Raw Decrypted Content
-                      </label>
-                      <div class="collapse-content">
-                        <div class="font-mono text-xs break-all whitespace-pre-wrap">
-                          {decryptedEmail.content}
-                        </div>
-                        <div class="mt-2">
-                          <button 
-                            class="btn btn-sm btn-ghost"
-                            on:click={() => {
-                              navigator.clipboard.writeText(decryptedEmail.content);
-                              showNotification('Raw decrypted content copied to clipboard');
-                            }}
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-12a2 2 0 00-2-2h-2M8 5a2 2 0 002 2h4a2 2 0 002-2M8 5a2 2 0 012-2h4a2 2 0 012 2" />
-                            </svg>
-                            Copy Raw
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              {/if}
-            {/if}
           </div>
         </div>
       {/each}

@@ -5,7 +5,7 @@ use axum::{
 use common::{db::Database, handle_json_response, AppError, Email, Mailbox};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
-use std::{sync::Arc, net::SocketAddr};
+use std::{sync::Arc, net::SocketAddr, str::FromStr};
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tracing::{info, error};
 use clap::Parser;
@@ -174,6 +174,7 @@ pub struct CreateMailboxRequest {
 pub struct UpdateMailboxRequest {
     name: Option<String>,
     expires_in_seconds: Option<i64>,
+    public_key: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -337,6 +338,11 @@ async fn create_mailbox<D: Database>(
         }
     }
 
+    // Validate public key using age crate
+    if let Err(e) = age::x25519::Recipient::from_str(&req.public_key) {
+        return Ok(Json(ApiResponse::error(format!("Invalid public key: {}", e))));
+    }
+
     let mailbox = Mailbox {
         id: common::generate_random_id(12),
         alias: common::generate_random_id(12),
@@ -436,6 +442,13 @@ async fn update_mailbox<D: Database>(
                 return Err(AppError::Mail("Maximum expiration time is 30 days".into()));
             }
             mailbox.mail_expires_in = Some(seconds);
+        }
+
+        if let Some(public_key) = req.public_key {
+            // Validate public key using age crate
+            age::x25519::Recipient::from_str(&public_key)
+                .map_err(|e| AppError::Mail(format!("Invalid public key: {}", e)))?;
+            mailbox.public_key = public_key;
         }
 
         state.db.update_mailbox(&mailbox).await?;
