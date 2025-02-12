@@ -5,6 +5,7 @@
   import { generateAgeKeyPair, validateAgePublicKey, type AgeKeyPair } from '$lib/age';
   import ErrorAlert from '$lib/components/ErrorAlert.svelte';
   import Toast from '$lib/components/Toast.svelte';
+  import { savePrivateKey, getPrivateKey, hasPrivateKey } from '$lib/storage';
 
   interface Mailbox {
     id: string;
@@ -43,15 +44,15 @@
   let toastMessage = '';
   let showToast = false;
 
-  function validatePublicKey(key: string): boolean {
+  async function validatePublicKey(key: string): Promise<boolean> {
     return validateAgePublicKey(key);
   }
 
-  function updatePublicKey(key: string) {
+  async function updatePublicKey(key: string) {
     publicKey = key;
     if (!key) {
       publicKeyError = '';
-    } else if (!validatePublicKey(key)) {
+    } else if (!(await validatePublicKey(key))) {
       publicKeyError = 'Invalid age public key format. Should start with "age1" and be exactly 63 characters long.';
     } else {
       publicKeyError = '';
@@ -63,8 +64,10 @@
     error = null;
     try {
       const keyPair = await generateAgeKeyPair();
-      updatePublicKey(keyPair.publicKey);
+      await updatePublicKey(keyPair.publicKey);
       privateKey = keyPair.privateKey;
+      // Save private key to localStorage
+      savePrivateKey(keyPair.publicKey, keyPair.privateKey);
       showPrivateKeyModal = true;
     } catch (e) {
       error = e;
@@ -74,7 +77,7 @@
   }
 
   function closePrivateKeyModal() {
-    if (!confirm('Have you saved your private key? You won\'t be able to see it again!')) {
+    if (!confirm('The private key has been automatically saved to your browser\'s localStorage. We recommend also keeping a backup of this key. Do you want to close this window?')) {
       return;
     }
     showPrivateKeyModal = false;
@@ -114,6 +117,19 @@
     setTimeout(() => {
       showToast = false;
     }, 3000);
+  }
+
+  async function copyToClipboard(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      toastMessage = 'Copied to clipboard';
+      showToast = true;
+      setTimeout(() => {
+        showToast = false;
+      }, 3000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
   }
 
   onMount(async () => {
@@ -183,179 +199,202 @@
   }
 </script>
 
-<div class="space-y-6">
-  <div class="flex justify-between items-center">
-    <h1 class="text-2xl font-bold">Your Mailboxes</h1>
-    {#if mailboxes.length > 0}
-      <button class="btn btn-primary" on:click={() => showCreateModal = true}>
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-        </svg>
-        New Mailbox
-      </button>
-    {/if}
+<style>
+  /* Responsive grid layout for mailboxes */
+  .mailbox-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr));
+    gap: 1rem;
+    padding: 1rem;
+  }
+
+  /* Responsive card styles */
+  .mailbox-card {
+    @apply bg-base-100 rounded-lg border border-base-200 shadow-sm p-4;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    height: 100%;
+  }
+
+  /* Card content wrapper to push button to bottom */
+  .mailbox-card-content {
+    @apply flex-1 flex flex-col gap-3;
+  }
+
+  /* Responsive button groups */
+  .button-group {
+    @apply flex flex-wrap gap-2 mt-auto pt-2;
+  }
+
+  /* Modal responsiveness */
+  .modal-content {
+    @apply w-full max-w-md mx-auto p-4 sm:p-6;
+  }
+
+  @media (max-width: 640px) {
+    .input-group {
+      @apply flex-col gap-2;
+    }
+    .input-group > * {
+      @apply w-full;
+    }
+  }
+</style>
+
+<div class="container mx-auto px-4 sm:px-6 py-6">
+  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+    <h1 class="text-2xl font-bold text-base-content">Your Mailboxes</h1>
+    <button
+      on:click={() => showCreateModal = true}
+      class="btn btn-primary"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+      </svg>
+      <span class="ml-2">Create Mailbox</span>
+    </button>
   </div>
 
-  <ErrorAlert {error} className="mb-4" />
+  {#if error}
+    <ErrorAlert error={error} className="mb-4" />
+  {/if}
 
   {#if loading}
-    <div class="flex justify-center py-12">
-      <span class="loading loading-spinner loading-lg"></span>
+    <div class="flex justify-center items-center min-h-[200px]">
+      <span class="loading loading-spinner loading-lg text-primary"></span>
     </div>
   {:else if mailboxes.length === 0}
-    <div class="flex flex-col items-center py-16 max-w-lg mx-auto text-center space-y-6">
-      <!-- Empty state illustration -->
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-24 w-24 text-base-content/30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-      </svg>
-      
-      <!-- Main heading with improved typography -->
-      <h3 class="font-bold text-2xl mb-2">You're all set to create your first secure mailbox!</h3>
-      
-      <!-- Informative description -->
-      <p class="text-base-content/70 text-lg">
-        Mail Hook provides encrypted email storage to keep your messages safe and private.
-      </p>
-
-      <!-- Enhanced CTA button -->
-      <div class="space-y-3">
-        <button class="btn btn-primary btn-lg" on:click={() => showCreateModal = true}>
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-          </svg>
-          Create Mailbox
-        </button>
-        <p class="text-base-content/60 text-sm">Secure your emails with just one click</p>
-      </div>
+    <div class="text-center py-12">
+      <h3 class="text-lg font-medium text-base-content/70">No mailboxes yet</h3>
+      <p class="mt-2 text-base-content/50">Create your first mailbox to get started</p>
     </div>
   {:else}
-    <div class="grid gap-4 grid-cols-1">
-      {#each mailboxes as mailbox (mailbox.id)}
-        <div class="card bg-base-200">
-          <div class="card-body">
-            <div class="flex justify-between items-start">
-              <div>
-                <h2 class="card-title text-xl">{mailbox.name}</h2>
+    <div class="mailbox-grid">
+      {#each mailboxes as mailbox}
+        <div class="mailbox-card">
+          <div class="mailbox-card-content">
+            <div class="flex justify-between items-start gap-4">
+              <div class="flex-1 min-w-0">
+                <h3 class="text-lg font-medium truncate" title={mailbox.name}>{mailbox.name}</h3>
               </div>
-              <button 
-                class="btn btn-square btn-sm btn-ghost text-error" 
-                on:click={() => deleteMailbox(mailbox.id)}
-                aria-label="Delete mailbox"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </button>
+              <div class="dropdown dropdown-end">
+                <button class="btn btn-ghost btn-sm btn-square">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                  </svg>
+                </button>
+                <ul class="dropdown-content menu p-2 shadow-lg bg-base-100 rounded-box w-52">
+                  <li><button class="text-error" on:click={() => deleteMailbox(mailbox.id)}>Delete</button></li>
+                </ul>
+              </div>
             </div>
 
-            <div class="space-y-3">
-              <!-- Email Address -->
-              <div>
-                <div class="text-sm font-semibold mb-2">Email Address</div>
-                <div class="flex gap-2 items-center">
-                  <div class="text-base text-base-content/70 flex-1 font-mono bg-base-300 p-3 rounded min-w-0">
-                    <div class="flex items-center pointer-events-none">
-                      <span class="text-primary font-semibold whitespace-nowrap">{mailbox.alias}</span>
-                      {#if supportedDomains.length > 1}
-                        <div class="dropdown dropdown-hover inline-block">
-                          <button 
-                            class="text-base-content/50 cursor-pointer"
-                            aria-label="Select domain"
-                          >@{selectedDomain}</button>
-                          <ul class="dropdown-content z-[1] menu p-2 shadow bg-base-200 rounded-box">
-                            {#each supportedDomains as domain}
-                              <li>
-                                <button 
-                                  class="whitespace-nowrap" 
-                                  on:click={() => selectedDomain = domain}
-                                >
-                                  {domain}
-                                </button>
-                              </li>
-                            {/each}
-                          </ul>
-                        </div>
-                      {:else}
-                        <span class="text-base-content/50">@{supportedDomains[0] || 'any-supported-domain'}</span>
-                      {/if}
-                    </div>
+            <!-- Email Address -->
+            <div class="space-y-1">
+              <div class="text-sm font-medium text-base-content/70">Email Address</div>
+              <div class="flex gap-2 items-center bg-base-200/50 p-2 rounded-lg">
+                <div class="flex-1 min-w-0 font-mono text-sm">
+                  <div class="flex items-center">
+                    <span class="text-primary font-medium truncate">{mailbox.alias}</span>
+                    {#if supportedDomains.length > 1}
+                      <div class="dropdown dropdown-hover">
+                        <button class="text-base-content/50">@{selectedDomain}</button>
+                        <ul class="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-52">
+                          {#each supportedDomains as domain}
+                            <li><button on:click={() => selectedDomain = domain}>{domain}</button></li>
+                          {/each}
+                        </ul>
+                      </div>
+                    {:else}
+                      <span class="text-base-content/50">@{supportedDomains[0] || ''}</span>
+                    {/if}
                   </div>
+                </div>
+                <button 
+                  class="btn btn-ghost btn-sm btn-square"
+                  on:click={() => copyToClipboard(`${mailbox.alias}@${selectedDomain || supportedDomains[0] || ''}`)}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-12a2 2 0 00-2-2h-2M8 5a2 2 0 002 2h4a2 2 0 002-2M8 5a2 2 0 012-2h4a2 2 0 012 2" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Mailbox ID -->
+            <div class="space-y-1">
+              <div class="text-sm font-medium text-base-content/70">Mailbox ID (for API)</div>
+              <div class="flex gap-2 items-center bg-base-200/50 p-2 rounded-lg">
+                <code class="flex-1 min-w-0 text-sm truncate">{mailbox.id}</code>
+                <button 
+                  class="btn btn-ghost btn-sm btn-square"
+                  on:click={() => copyToClipboard(mailbox.id)}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-12a2 2 0 00-2-2h-2M8 5a2 2 0 002 2h4a2 2 0 002-2M8 5a2 2 0 012-2h4a2 2 0 012 2" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Public Key -->
+            <div class="space-y-1">
+              <div class="text-sm font-medium text-base-content/70">Public Key</div>
+              <div class="flex gap-2 items-center bg-base-200/50 p-2 rounded-lg">
+                <code class="flex-1 min-w-0 text-sm truncate">{mailbox.public_key}</code>
+                <button 
+                  class="btn btn-ghost btn-sm btn-square"
+                  on:click={() => copyToClipboard(mailbox.public_key)}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-12a2 2 0 00-2-2h-2M8 5a2 2 0 002 2h4a2 2 0 002-2M8 5a2 2 0 012-2h4a2 2 0 012 2" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Private Key Status -->
+            <div class="space-y-1">
+              <div class="text-sm font-medium text-base-content/70">Private Key</div>
+              <div class="flex gap-2 items-center bg-base-200/50 p-2 rounded-lg">
+                {#if hasPrivateKey(mailbox.public_key)}
+                  {@const privateKey = getPrivateKey(mailbox.public_key) || ''}
+                  {@const keyContent = privateKey.replace('AGE-SECRET-KEY-', '')}
+                  <code class="flex-1 min-w-0 text-sm truncate">AGE-SECRET-KEY-{keyContent.slice(0, 8)}•••••••••••{keyContent.slice(-8)}</code>
                   <button 
-                    class="btn btn-square btn-sm btn-ghost shrink-0"
-                    on:click={() => {
-                      const domain = selectedDomain || supportedDomains[0] || 'any-supported-domain';
-                      const email = `${mailbox.alias}@${domain}`;
-                      navigator.clipboard.writeText(email);
-                      showNotification('Email address copied to clipboard');
-                    }}
-                    aria-label="Copy mailbox address"
+                    class="btn btn-ghost btn-sm btn-square"
+                    on:click={() => copyToClipboard(privateKey)}
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-12a2 2 0 00-2-2h-2M8 5a2 2 0 002 2h4a2 2 0 002-2M8 5a2 2 0 012-2h4a2 2 0 012 2" />
                     </svg>
                   </button>
-                </div>
-              </div>
-
-              <!-- Mailbox ID for API -->
-              <div>
-                <div class="text-sm font-semibold mb-2">Mailbox ID (for API)</div>
-                <div class="flex gap-2 items-center">
-                  <div class="text-base text-base-content/70 flex-1 font-mono bg-base-300 p-3 rounded min-w-0">
-                    <div class="truncate">
-                      {mailbox.id}
-                    </div>
-                  </div>
-                  <button 
-                    class="btn btn-square btn-sm btn-ghost shrink-0"
-                    on:click={() => {
-                      navigator.clipboard.writeText(mailbox.id);
-                      showNotification('Mailbox ID copied to clipboard');
-                    }}
-                    aria-label="Copy ID"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              <!-- Public Key -->
-              <div>
-                <div class="text-sm font-semibold mb-2">Public Key</div>
-                <div class="flex gap-2 items-center">
-                  <div class="text-base text-base-content/70 flex-1 font-mono bg-base-300 p-3 rounded min-w-0">
-                    <div class="truncate">
-                      {mailbox.public_key}
-                    </div>
-                  </div>
-                  <button 
-                    class="btn btn-square btn-sm btn-ghost shrink-0"
-                    on:click={() => {
-                      navigator.clipboard.writeText(mailbox.public_key);
-                      showNotification('Public key copied to clipboard');
-                    }}
-                    aria-label="Copy public key"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-12a2 2 0 00-2-2h-2M8 5a2 2 0 002 2h4a2 2 0 002-2M8 5a2 2 0 012-2h4a2 2 0 012 2" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              <div class="flex justify-between items-center text-sm">
-                <div class="text-base-content/70">
-                  Created {new Date(mailbox.created_at * 1000).toLocaleDateString()}
-                </div>
-                {#if mailbox.mail_expires_in}
-                  <div class="text-warning">
-                    Emails expire after arriving in your mailbox {formatExpirationTime(mailbox.mail_expires_in)}
-                  </div>
+                {:else}
+                  <span class="text-base-content/50 text-sm">No private key saved in browser</span>
                 {/if}
               </div>
             </div>
+
+            <div class="flex justify-between items-center text-sm">
+              <div class="text-base-content/70">
+                Created {new Date(mailbox.created_at * 1000).toLocaleDateString()}
+              </div>
+              {#if mailbox.mail_expires_in}
+                <div class="text-warning text-xs sm:text-sm">
+                  Emails expire after {formatExpirationTime(mailbox.mail_expires_in)}
+                </div>
+              {/if}
+            </div>
+          </div>
+
+          <div class="button-group">
+            <a href="/mailboxes/{mailbox.id}" class="btn btn-sm btn-primary flex-1">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+              View Emails
+            </a>
           </div>
         </div>
       {/each}

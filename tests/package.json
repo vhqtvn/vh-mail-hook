@@ -1,0 +1,15 @@
+{
+  "name": "vh-mail-hook-tests",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "send-test-email": "node scripts/send-test-email.js",
+    "help": "echo 'Usage: npm run send-test-email <mailbox-alias>'"
+  },
+  "dependencies": {
+    "@faker-js/faker": "^8.4.1",
+    "dotenv": "^16.4.5",
+    "nodemailer": "^6.9.12"
+  }
+} 
