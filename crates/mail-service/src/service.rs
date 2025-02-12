@@ -111,6 +111,16 @@ impl MailService {
         self.max_email_size
     }
 
+    fn normalize_email_local_part(local_part: &str) -> String {
+        // Remove everything after + (including +)
+        let base = local_part.split('+').next().unwrap_or(local_part);
+        
+        // Remove all non-alphanumeric characters
+        base.chars()
+            .filter(|c| c.is_alphanumeric())
+            .collect()
+    }
+
     pub async fn process_incoming_email(
         &self,
         raw_email: &[u8],
@@ -128,6 +138,10 @@ impl MailService {
             .ok_or_else(|| AppError::Mail("Invalid recipient address format".to_string()))?;
 
         debug!("Local part: {}", local_part);
+
+        // Normalize the local part
+        let normalized_local_part = Self::normalize_email_local_part(local_part);
+        debug!("Normalized local part: {}", normalized_local_part);
 
         // Check greylisting if enabled
         if self.enable_greylisting {
@@ -186,7 +200,7 @@ impl MailService {
         trace!("Looking up mailbox in database");
         let mailbox = self
             .db
-            .get_mailbox_by_incoming_address(local_part)
+            .get_mailbox_by_incoming_address(normalized_local_part.as_str())
             .await?
             .ok_or_else(|| AppError::Mail(format!("Mailbox not found: {}", recipient)))?;
 
