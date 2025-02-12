@@ -12,7 +12,8 @@ use crate::auth::{create_token, store_credentials, AuthResponse, Claims, get_cre
 #[derive(Debug, Deserialize)]
 pub struct TelegramAuth {
     pub id: i64,
-    pub first_name: String,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
     pub username: Option<String>,
     pub photo_url: Option<String>,
     pub auth_date: i64,
@@ -190,13 +191,21 @@ fn verify_telegram_auth(auth_data: &TelegramAuth) -> Result<bool, AppError> {
     // Create a sorted string of all fields except hash
     let mut fields = vec![
         format!("auth_date={}", auth_data.auth_date),
-        format!("first_name={}", auth_data.first_name),
         format!("id={}", auth_data.id),
     ];
+
+    if let Some(ref first_name) = auth_data.first_name {
+        fields.push(format!("first_name={}", first_name));
+    }
     
+    if let Some(ref last_name) = auth_data.last_name {
+        fields.push(format!("last_name={}", last_name));
+    }
+
     if let Some(ref username) = auth_data.username {
         fields.push(format!("username={}", username));
     }
+
     if let Some(ref photo_url) = auth_data.photo_url {
         fields.push(format!("photo_url={}", photo_url));
     }
