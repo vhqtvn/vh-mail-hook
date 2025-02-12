@@ -6,21 +6,11 @@ export interface AgeKeyPair {
   privateKey: string;
 }
 
-// Convert Uint8Array to Base64 string
-function uint8ArrayToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
-
 export async function validateAgePublicKey(key: string): Promise<boolean> {
   try {
     if (!key.startsWith('age1')) return false;
-    const bech32Module = await import('bech32');
+    const bech32Module = __importDefault(await import('bech32'));
     const decoded = bech32Module.bech32.decode(key);
-    console.log(decoded);
     return decoded.prefix === 'age' && decoded.words.length === 52;
   } catch {
     return false;
