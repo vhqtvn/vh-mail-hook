@@ -383,7 +383,7 @@ impl Database for SqliteDatabase {
     }
 
     async fn get_mailbox_emails(&self, mailbox_id: &str) -> Result<Vec<Email>, AppError> {
-        let emails = sqlx::query("SELECT * FROM emails WHERE mailbox_id = ?")
+        let emails = sqlx::query("SELECT * FROM emails WHERE mailbox_id = ? ORDER BY received_at DESC")
             .bind(mailbox_id)
             .fetch_all(&self.pool)
             .await
